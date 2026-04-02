@@ -38,7 +38,7 @@ class TelnyxSignatureMiddleware implements Middleware
 
         $signature = $request->getHeaderLine('telnyx-signature-ed25519');
         $timestamp = $request->getHeaderLine('telnyx-timestamp');
-        $body = (string) $request->getBody();
+        $body = $this->getVerificationBody($request);
 
         $errorMessage = $this->getValidationError($signature, $timestamp, $body);
 
@@ -80,6 +80,17 @@ class TelnyxSignatureMiddleware implements Middleware
         return $errorMessage;
     }
 
+    private function getVerificationBody(Request $request): string
+    {
+        $rawBody = file_get_contents('php://input');
+
+        if (is_string($rawBody) && $rawBody !== '') {
+            return $rawBody;
+        }
+
+        return (string) $request->getBody();
+    }
+
     private function logValidationFailure(
         Request $request,
         string $errorMessage,
@@ -95,6 +106,13 @@ class TelnyxSignatureMiddleware implements Middleware
 
         $serverSignature = $_SERVER['HTTP_TELNYX_SIGNATURE_ED25519'] ?? '';
         $serverTimestamp = $_SERVER['HTTP_TELNYX_TIMESTAMP'] ?? '';
+        $phpInputBody = file_get_contents('php://input');
+
+        if (!is_string($phpInputBody)) {
+            $phpInputBody = '';
+        }
+
+        $psrBody = (string) $request->getBody();
 
         $context = [
             'event' => 'telnyx_signature_validation_failed',
@@ -112,6 +130,10 @@ class TelnyxSignatureMiddleware implements Middleware
             'timestamp_age_seconds' => $ageSeconds,
             'body_length' => strlen($body),
             'body_sha256' => hash('sha256', $body),
+            'php_input_length' => strlen($phpInputBody),
+            'php_input_sha256' => hash('sha256', $phpInputBody),
+            'psr_body_length' => strlen($psrBody),
+            'psr_body_sha256' => hash('sha256', $psrBody),
             'content_type' => $request->getHeaderLine('content-type'),
             'user_agent' => $request->getHeaderLine('user-agent'),
         ];

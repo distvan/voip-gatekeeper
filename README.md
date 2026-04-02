@@ -106,6 +106,8 @@ Webhook requests rejected with `403` now emit a JSON log line to stderr with the
 
 Those `403` logs also include whether the Telnyx headers were visible through both PSR-7 and `$_SERVER`, along with a SHA-256 fingerprint of the raw request body. This helps isolate header mapping problems versus payload changes in transit.
 
+Signature verification now prefers `php://input` as the raw-body source, with the PSR-7 body stream only as a fallback. The `403` logs include fingerprints for both so you can spot any mismatch between the PHP raw input and the PSR-7 request body.
+
 On startup, the service also logs a SHA-256 fingerprint and decoded length for the configured Telnyx public key. This makes it possible to confirm which key was loaded in production without logging the raw key.
 
 ## Cold-start recommendations
