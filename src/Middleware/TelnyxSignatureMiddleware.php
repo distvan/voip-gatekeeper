@@ -26,6 +26,8 @@ class TelnyxSignatureMiddleware implements Middleware
 
         $this->publicKey = $decodedPublicKey;
         $this->maxTimestampAge = $maxTimestampAge;
+
+        $this->logConfiguredPublicKeyFingerprint($decodedPublicKey);
     }
 
     public function process(Request $request, RequestHandler $handler): Response
@@ -91,6 +93,9 @@ class TelnyxSignatureMiddleware implements Middleware
             $ageSeconds = abs(time() - (int) $timestamp);
         }
 
+        $serverSignature = $_SERVER['HTTP_TELNYX_SIGNATURE_ED25519'] ?? '';
+        $serverTimestamp = $_SERVER['HTTP_TELNYX_TIMESTAMP'] ?? '';
+
         $context = [
             'event' => 'telnyx_signature_validation_failed',
             'reason' => $errorMessage,
@@ -98,11 +103,28 @@ class TelnyxSignatureMiddleware implements Middleware
             'path' => $request->getUri()->getPath(),
             'has_signature_header' => $signature !== '',
             'has_timestamp_header' => $timestamp !== '',
+            'server_has_signature_header' => $serverSignature !== '',
+            'server_has_timestamp_header' => $serverTimestamp !== '',
+            'psr_server_signature_match' => $signature === $serverSignature,
+            'psr_server_timestamp_match' => $timestamp === $serverTimestamp,
             'signature_length' => strlen($signature),
             'timestamp' => $timestamp !== '' ? $timestamp : null,
             'timestamp_age_seconds' => $ageSeconds,
             'body_length' => strlen($body),
+            'body_sha256' => hash('sha256', $body),
+            'content_type' => $request->getHeaderLine('content-type'),
             'user_agent' => $request->getHeaderLine('user-agent'),
+        ];
+
+        error_log((string) json_encode($context, JSON_UNESCAPED_SLASHES));
+    }
+
+    private function logConfiguredPublicKeyFingerprint(string $decodedPublicKey): void
+    {
+        $context = [
+            'event' => 'telnyx_public_key_loaded',
+            'public_key_length' => strlen($decodedPublicKey),
+            'public_key_sha256' => hash('sha256', $decodedPublicKey),
         ];
 
         error_log((string) json_encode($context, JSON_UNESCAPED_SLASHES));

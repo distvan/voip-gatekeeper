@@ -104,6 +104,10 @@ The container still uses PHP's built-in web server, which is acceptable for an i
 
 Webhook requests rejected with `403` now emit a JSON log line to stderr with the validation reason and safe request metadata. This is intended to make Cloud Run troubleshooting easier without logging the raw webhook body or signature value.
 
+Those `403` logs also include whether the Telnyx headers were visible through both PSR-7 and `$_SERVER`, along with a SHA-256 fingerprint of the raw request body. This helps isolate header mapping problems versus payload changes in transit.
+
+On startup, the service also logs a SHA-256 fingerprint and decoded length for the configured Telnyx public key. This makes it possible to confirm which key was loaded in production without logging the raw key.
+
 ## Cold-start recommendations
 
 For this service, the biggest Cloud Run cold-start improvements are operational rather than code-level.
