@@ -41,6 +41,7 @@ class TelnyxSignatureMiddleware implements Middleware
         $errorMessage = $this->getValidationError($signature, $timestamp, $body);
 
         if ($errorMessage !== null) {
+            $this->logValidationFailure($request, $errorMessage, $signature, $timestamp, $body);
             return $this->forbiddenResponse($errorMessage);
         }
 
@@ -75,6 +76,36 @@ class TelnyxSignatureMiddleware implements Middleware
         }
 
         return $errorMessage;
+    }
+
+    private function logValidationFailure(
+        Request $request,
+        string $errorMessage,
+        string $signature,
+        string $timestamp,
+        string $body
+    ): void {
+        $ageSeconds = null;
+
+        if (ctype_digit($timestamp)) {
+            $ageSeconds = abs(time() - (int) $timestamp);
+        }
+
+        $context = [
+            'event' => 'telnyx_signature_validation_failed',
+            'reason' => $errorMessage,
+            'method' => $request->getMethod(),
+            'path' => $request->getUri()->getPath(),
+            'has_signature_header' => $signature !== '',
+            'has_timestamp_header' => $timestamp !== '',
+            'signature_length' => strlen($signature),
+            'timestamp' => $timestamp !== '' ? $timestamp : null,
+            'timestamp_age_seconds' => $ageSeconds,
+            'body_length' => strlen($body),
+            'user_agent' => $request->getHeaderLine('user-agent'),
+        ];
+
+        error_log((string) json_encode($context, JSON_UNESCAPED_SLASHES));
     }
 
     private function forbiddenResponse(string $message): Response

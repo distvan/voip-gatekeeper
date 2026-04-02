@@ -102,6 +102,8 @@ If you add or rename PHP classes under `src/`, rebuild the image before testing.
 
 The container still uses PHP's built-in web server, which is acceptable for an initial Cloud Run deployment. The image is now tightened by running as a non-root user and by using a dedicated router script so non-file requests are always forwarded to Slim.
 
+Webhook requests rejected with `403` now emit a JSON log line to stderr with the validation reason and safe request metadata. This is intended to make Cloud Run troubleshooting easier without logging the raw webhook body or signature value.
+
 ## Cold-start recommendations
 
 For this service, the biggest Cloud Run cold-start improvements are operational rather than code-level.
