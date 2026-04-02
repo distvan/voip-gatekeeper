@@ -11,12 +11,14 @@ TELNYX_PUBLIC_KEY_BASE64
 CALL_FORWARD_NUMBER
 TELNYX_TTS_VOICE
 TELNYX_TTS_LANGUAGE
+WHITELISTED_CALLERS
 ```
 
 - `TELNYX_PUBLIC_KEY_BASE64`: base64-encoded Telnyx webhook public key for the environment
 - `CALL_FORWARD_NUMBER`: destination phone number in E.164 format, for example `+3620XXXXXXX`
 - `TELNYX_TTS_VOICE`: optional TTS voice. Default is `alice`. For Hungarian, prefer a provider-specific Hungarian voice rather than `alice`, for example `Azure.hu-HU-NoemiNeural` if that voice is enabled in your Telnyx setup.
 - `TELNYX_TTS_LANGUAGE`: optional language used only when `TELNYX_TTS_VOICE=alice`. Default is `hu-HU`.
+- `WHITELISTED_CALLERS`: optional comma-separated list of caller numbers in E.164 format, for example `+36201234567,+36701234567`. Whitelisted callers are connected directly to `CALL_FORWARD_NUMBER` without the normal announcement and confirmation flow. All other callers continue through the normal incoming-call flow, where pressing `1` records a voicemail instead of calling you.
 
 ## Cloud Run deployment
 
@@ -70,7 +72,7 @@ gcloud run deploy voip-gatekeeper \
   --allow-unauthenticated \
   --min-instances 1 \
   --cpu-boost \
-  --set-env-vars TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY,CALL_FORWARD_NUMBER=+3620XXXXXXX
+  --set-env-vars TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY,CALL_FORWARD_NUMBER=+3620XXXXXXX,WHITELISTED_CALLERS=+36201234567,+36701234567
 ```
 
 ## Local run
@@ -79,7 +81,7 @@ For a local container run:
 
 ```bash
 docker build -t voip-gatekeeper .
-docker run --rm -p 8080:8080 -e TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY -e CALL_FORWARD_NUMBER=+3620XXXXXXX voip-gatekeeper
+docker run --rm -p 8080:8080 -e TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY -e CALL_FORWARD_NUMBER=+3620XXXXXXX -e WHITELISTED_CALLERS=+36201234567,+36701234567 voip-gatekeeper
 ```
 
 Example with an explicit Hungarian TTS voice:
