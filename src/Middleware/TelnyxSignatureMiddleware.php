@@ -11,6 +11,8 @@ use InvalidArgumentException;
 
 class TelnyxSignatureMiddleware implements Middleware
 {
+    private const HEALTH_CHECK_PATHS = ['/health'];
+
     private string $publicKey;
     private int $maxTimestampAge;
 
@@ -28,6 +30,10 @@ class TelnyxSignatureMiddleware implements Middleware
 
     public function process(Request $request, RequestHandler $handler): Response
     {
+        if ($this->shouldBypassSignatureValidation($request)) {
+            return $handler->handle($request);
+        }
+
         $signature = $request->getHeaderLine('telnyx-signature-ed25519');
         $timestamp = $request->getHeaderLine('telnyx-timestamp');
         $body = (string) $request->getBody();
@@ -39,6 +45,12 @@ class TelnyxSignatureMiddleware implements Middleware
         }
 
         return $handler->handle($request);
+    }
+
+    private function shouldBypassSignatureValidation(Request $request): bool
+    {
+        return $request->getMethod() === 'GET'
+            && in_array($request->getUri()->getPath(), self::HEALTH_CHECK_PATHS, true);
     }
 
     private function getValidationError(string $signature, string $timestamp, string $body): ?string

@@ -78,6 +78,26 @@ docker build -t voip-gatekeeper .
 docker run --rm -p 8080:8080 -e TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY -e CALL_FORWARD_NUMBER=+3620XXXXXXX voip-gatekeeper
 ```
 
+For a local Docker Compose run:
+
+```bash
+export TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY
+export CALL_FORWARD_NUMBER=+3620XXXXXXX
+docker compose up --build
+```
+
+The sample Compose setup is in [compose.yaml](compose.yaml).
+
+For a lightweight startup check without Telnyx signature headers:
+
+```bash
+curl http://localhost:8080/health
+```
+
+The container image also includes a Docker `HEALTHCHECK` that calls this endpoint internally.
+
+If you add or rename PHP classes under `src/`, rebuild the image before testing. The container uses Composer's optimized authoritative autoloader, so source changes are not picked up by an already-built image.
+
 ## Runtime notes
 
 The container still uses PHP's built-in web server, which is acceptable for an initial Cloud Run deployment. The image is now tightened by running as a non-root user and by using a dedicated router script so non-file requests are always forwarded to Slim.

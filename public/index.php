@@ -25,6 +25,14 @@ if (preg_match('/^\+[1-9]\d{6,14}$/', $callForwardNumber) !== 1) {
 $app = AppFactory::create();
 $app->add(new TelnyxSignatureMiddleware($telnyxPublicKey));
 
+$app->get('/health', static function ($request, $response) {
+    unset($request);
+
+    $response->getBody()->write('ok');
+
+    return $response->withHeader('Content-Type', 'text/plain');
+});
+
 $callController = new CallController($callForwardNumber);
 
 $app->post('/incoming-call', [$callController, 'incomingCall']);

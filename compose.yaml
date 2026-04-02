@@ -1,0 +1,11 @@
+services:
+  voip-gatekeeper:
+    build:
+      context: .
+    image: voip-gatekeeper:local
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      TELNYX_PUBLIC_KEY_BASE64: ${TELNYX_PUBLIC_KEY_BASE64}
+      CALL_FORWARD_NUMBER: ${CALL_FORWARD_NUMBER}
