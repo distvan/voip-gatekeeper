@@ -67,7 +67,7 @@ class TelnyxSignatureMiddleware implements Middleware
         } elseif (abs(time() - (int) $timestamp) > $this->maxTimestampAge) {
             $errorMessage = 'Stale webhook timestamp';
         } else {
-            $payload = $timestamp  . '.' . $body;
+            $payload = $timestamp . '|' . $body;
             $decodedSignature = base64_decode($signature, true);
 
             if ($decodedSignature === false) {
