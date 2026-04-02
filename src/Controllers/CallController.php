@@ -10,23 +10,29 @@ class CallController
     private const XML_CONTENT_TYPE = 'application/xml';
 
     private string $mobileNumber;
+    private string $sayVoice;
+    private string $sayLanguage;
 
-    public function __construct(string $mobileNumber)
+    public function __construct(string $mobileNumber, string $sayVoice = 'alice', string $sayLanguage = 'hu-HU')
     {
         $this->mobileNumber = $mobileNumber;
+        $this->sayVoice = $sayVoice;
+        $this->sayLanguage = $sayLanguage;
     }
 
     public function incomingCall(Request $_request, Response $response): Response
     {
         unset($_request);
 
+        $sayAttributes = $this->buildSayAttributes();
+
         $xml = <<<XML
         <Response>
-            <Say voice="alice" language="hu-HU">
+            <Say{$sayAttributes}>
                 Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok.
             </Say>
             <Gather numDigits="1" action="/gather" timeout="5">
-                <Say voice="alice" language="hu-HU">
+                <Say{$sayAttributes}>
                     Tájékoztatom, hogy a hívás rögzítésre kerül.
                     Az egyes gomb megnyomásával Ön beleegyezik a hívás rögzítésébe.
                 </Say>
@@ -37,6 +43,17 @@ class CallController
         
         $response->getBody()->write($xml);
         return $response->withHeader('Content-Type', self::XML_CONTENT_TYPE);
+    }
+
+    private function buildSayAttributes(): string
+    {
+        $attributes = ' voice="' . htmlspecialchars($this->sayVoice, ENT_QUOTES | ENT_XML1, 'UTF-8') . '"';
+
+        if ($this->sayVoice === 'alice') {
+            $attributes .= ' language="' . htmlspecialchars($this->sayLanguage, ENT_QUOTES | ENT_XML1, 'UTF-8') . '"';
+        }
+
+        return $attributes;
     }
 
     public function gather(Request $request, Response $response): Response

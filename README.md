@@ -9,10 +9,14 @@ The application requires these runtime settings:
 ```text
 TELNYX_PUBLIC_KEY_BASE64
 CALL_FORWARD_NUMBER
+TELNYX_TTS_VOICE
+TELNYX_TTS_LANGUAGE
 ```
 
 - `TELNYX_PUBLIC_KEY_BASE64`: base64-encoded Telnyx webhook public key for the environment
 - `CALL_FORWARD_NUMBER`: destination phone number in E.164 format, for example `+3620XXXXXXX`
+- `TELNYX_TTS_VOICE`: optional TTS voice. Default is `alice`. For Hungarian, prefer a provider-specific Hungarian voice rather than `alice`, for example `Azure.hu-HU-NoemiNeural` if that voice is enabled in your Telnyx setup.
+- `TELNYX_TTS_LANGUAGE`: optional language used only when `TELNYX_TTS_VOICE=alice`. Default is `hu-HU`.
 
 ## Cloud Run deployment
 
@@ -76,6 +80,16 @@ For a local container run:
 ```bash
 docker build -t voip-gatekeeper .
 docker run --rm -p 8080:8080 -e TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY -e CALL_FORWARD_NUMBER=+3620XXXXXXX voip-gatekeeper
+```
+
+Example with an explicit Hungarian TTS voice:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY \
+  -e CALL_FORWARD_NUMBER=+3620XXXXXXX \
+  -e TELNYX_TTS_VOICE=Azure.hu-HU-NoemiNeural \
+  voip-gatekeeper
 ```
 
 For a local Docker Compose run:

@@ -9,6 +9,8 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 $telnyxPublicKey = getenv('TELNYX_PUBLIC_KEY_BASE64');
 $callForwardNumber = getenv('CALL_FORWARD_NUMBER');
+$ttsVoice = getenv('TELNYX_TTS_VOICE');
+$ttsLanguage = getenv('TELNYX_TTS_LANGUAGE');
 
 if ($telnyxPublicKey === false || $telnyxPublicKey === '') {
     throw new ConfigurationException('TELNYX_PUBLIC_KEY_BASE64 is not configured.');
@@ -33,7 +35,11 @@ $app->get('/health', static function ($request, $response) {
     return $response->withHeader('Content-Type', 'text/plain');
 });
 
-$callController = new CallController($callForwardNumber);
+$callController = new CallController(
+    $callForwardNumber,
+    $ttsVoice !== false && $ttsVoice !== '' ? $ttsVoice : 'alice',
+    $ttsLanguage !== false && $ttsLanguage !== '' ? $ttsLanguage : 'hu-HU'
+);
 
 $app->post('/incoming-call', [$callController, 'incomingCall']);
 $app->post('/gather', [$callController, 'gather']);
