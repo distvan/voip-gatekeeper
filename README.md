@@ -8,17 +8,27 @@ The application requires these runtime settings:
 
 ```text
 TELNYX_PUBLIC_KEY_BASE64
+CALL_FORWARD_DESTINATION_TYPE
 CALL_FORWARD_NUMBER
+CALL_FORWARD_SIP_URI
+CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL
+CALL_FORWARD_SIP_TIMEOUT_SECONDS
 TELNYX_TTS_VOICE
 TELNYX_TTS_LANGUAGE
 WHITELISTED_CALLERS
 ```
 
 - `TELNYX_PUBLIC_KEY_BASE64`: base64-encoded Telnyx webhook public key for the environment
-- `CALL_FORWARD_NUMBER`: destination phone number in E.164 format, for example `+3620XXXXXXX`
+- `CALL_FORWARD_DESTINATION_TYPE`: required forwarding mode, either `e164` or `sip`
+- `CALL_FORWARD_NUMBER`: destination phone number in E.164 format, required only when `CALL_FORWARD_DESTINATION_TYPE=e164`, for example `+3620XXXXXXX`
+- `CALL_FORWARD_SIP_URI`: destination SIP URI, required only when `CALL_FORWARD_DESTINATION_TYPE=sip`, for example `sip:your-user@pbx.example.com`
+- `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL`: optional boolean, used only with `CALL_FORWARD_DESTINATION_TYPE=sip`. When `true`, whitelisted callers are sent to voicemail if the SIP call ends with `busy`, `no-answer`, `canceled`, or `failed`.
+- `CALL_FORWARD_SIP_TIMEOUT_SECONDS`: optional integer between `5` and `120`, used only with `CALL_FORWARD_DESTINATION_TYPE=sip`. This sets the SIP ring timeout on the `Dial` verb so fallback to voicemail can start sooner than the provider default.
 - `TELNYX_TTS_VOICE`: optional TTS voice. Default is `alice`. For Hungarian, prefer a provider-specific Hungarian voice rather than `alice`, for example `Azure.hu-HU-NoemiNeural` if that voice is enabled in your Telnyx setup.
 - `TELNYX_TTS_LANGUAGE`: optional language used only when `TELNYX_TTS_VOICE=alice`. Default is `hu-HU`.
-- `WHITELISTED_CALLERS`: optional comma-separated list of caller numbers in E.164 format, for example `+36201234567,+36701234567`. Whitelisted callers are connected directly to `CALL_FORWARD_NUMBER` without the normal announcement and confirmation flow. All other callers continue through the normal incoming-call flow, where pressing `1` records a voicemail instead of calling you.
+- `WHITELISTED_CALLERS`: optional comma-separated list of caller numbers in E.164 format, for example `+36201234567,+36701234567`. Whitelisted callers are connected directly to the configured forwarding destination without the normal announcement and confirmation flow. All other callers continue through the normal incoming-call flow, where pressing `1` records a voicemail instead of calling you.
+
+For your original use case, `sip` mode is the recommended way to ring a softphone app on your current phone without needing a second SIM or a second receiving mobile number. If you also enable `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL=true`, the service will try the SIP softphone first and then switch the caller to voicemail when the SIP leg is not answered or fails. Use `CALL_FORWARD_SIP_TIMEOUT_SECONDS` to shorten how long the SIP app rings before that fallback happens. Reliable background ringing depends on the chosen SIP provider and softphone supporting push notifications.
 
 ## Cloud Run deployment
 
@@ -58,7 +68,7 @@ gcloud run deploy voip-gatekeeper \
   --min-instances 1 \
   --cpu-boost \
   --set-secrets TELNYX_PUBLIC_KEY_BASE64=telnyx-public-key-base64:latest \
-  --set-env-vars CALL_FORWARD_NUMBER=+3620XXXXXXX
+  --set-env-vars CALL_FORWARD_DESTINATION_TYPE=e164,CALL_FORWARD_NUMBER=+3620XXXXXXX
 ```
 
 ### Deploy with a plain environment variable
@@ -72,7 +82,20 @@ gcloud run deploy voip-gatekeeper \
   --allow-unauthenticated \
   --min-instances 1 \
   --cpu-boost \
-  --set-env-vars TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY,CALL_FORWARD_NUMBER=+3620XXXXXXX,WHITELISTED_CALLERS=+36201234567,+36701234567
+  --set-env-vars TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY,CALL_FORWARD_DESTINATION_TYPE=e164,CALL_FORWARD_NUMBER=+3620XXXXXXX,WHITELISTED_CALLERS=+36201234567,+36701234567
+```
+
+Deploy the service in SIP softphone mode:
+
+```bash
+gcloud run deploy voip-gatekeeper \
+  --source . \
+  --region europe-west1 \
+  --allow-unauthenticated \
+  --min-instances 1 \
+  --cpu-boost \
+  --set-secrets TELNYX_PUBLIC_KEY_BASE64=telnyx-public-key-base64:latest \
+  --set-env-vars CALL_FORWARD_DESTINATION_TYPE=sip,CALL_FORWARD_SIP_URI=sip:your-user@pbx.example.com,CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL=true,CALL_FORWARD_SIP_TIMEOUT_SECONDS=12
 ```
 
 ## Local run
@@ -81,7 +104,20 @@ For a local container run:
 
 ```bash
 docker build -t voip-gatekeeper .
-docker run --rm -p 8080:8080 -e TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY -e CALL_FORWARD_NUMBER=+3620XXXXXXX -e WHITELISTED_CALLERS=+36201234567,+36701234567 voip-gatekeeper
+docker run --rm -p 8080:8080 -e TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY -e CALL_FORWARD_DESTINATION_TYPE=e164 -e CALL_FORWARD_NUMBER=+3620XXXXXXX -e WHITELISTED_CALLERS=+36201234567,+36701234567 voip-gatekeeper
+```
+
+Example for SIP softphone forwarding:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY \
+  -e CALL_FORWARD_DESTINATION_TYPE=sip \
+  -e CALL_FORWARD_SIP_URI=sip:your-user@pbx.example.com \
+  -e CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL=true \
+  -e CALL_FORWARD_SIP_TIMEOUT_SECONDS=12 \
+  -e WHITELISTED_CALLERS=+36201234567,+36701234567 \
+  voip-gatekeeper
 ```
 
 Example with an explicit Hungarian TTS voice:
@@ -89,6 +125,7 @@ Example with an explicit Hungarian TTS voice:
 ```bash
 docker run --rm -p 8080:8080 \
   -e TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY \
+  -e CALL_FORWARD_DESTINATION_TYPE=e164 \
   -e CALL_FORWARD_NUMBER=+3620XXXXXXX \
   -e TELNYX_TTS_VOICE=Azure.hu-HU-NoemiNeural \
   voip-gatekeeper
@@ -98,6 +135,7 @@ For a local Docker Compose run:
 
 ```bash
 export TELNYX_PUBLIC_KEY_BASE64=YOUR_BASE64_PUBLIC_KEY
+export CALL_FORWARD_DESTINATION_TYPE=e164
 export CALL_FORWARD_NUMBER=+3620XXXXXXX
 docker compose up --build
 ```
@@ -166,7 +204,7 @@ gcloud run deploy voip-gatekeeper \
   --min-instances 1 \
   --cpu-boost \
   --set-secrets TELNYX_PUBLIC_KEY_BASE64=telnyx-public-key-base64:latest \
-  --set-env-vars CALL_FORWARD_NUMBER=+3620XXXXXXX
+  --set-env-vars CALL_FORWARD_DESTINATION_TYPE=e164,CALL_FORWARD_NUMBER=+3620XXXXXXX
 ```
 
 ### Why this app is already in a good place
