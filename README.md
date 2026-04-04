@@ -28,7 +28,7 @@ WHITELISTED_CALLERS
 - `TELNYX_TTS_LANGUAGE`: optional language used only when `TELNYX_TTS_VOICE=alice`. Default is `hu-HU`.
 - `WHITELISTED_CALLERS`: optional comma-separated list of caller numbers in E.164 format, for example `+36201234567,+36701234567`. Whitelisted callers are connected directly to the configured forwarding destination without the normal announcement and confirmation flow. All other callers continue through the normal incoming-call flow, where pressing `1` records a voicemail instead of calling you.
 
-For your original use case, `sip` mode is the recommended way to ring a softphone app on your current phone without needing a second SIM or a second receiving mobile number. If you also enable `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL=true`, the service will try the SIP softphone first and then switch the caller to voicemail when the SIP leg is not answered or fails. Use `CALL_FORWARD_SIP_TIMEOUT_SECONDS` to shorten how long the SIP app rings before that fallback happens. Reliable background ringing depends on the chosen SIP provider and softphone supporting push notifications.
+For your original use case, `sip` mode is the recommended way to ring a softphone app on your current phone without needing a second SIM or a second receiving mobile number. The generated TeXML now uses Telnyx's documented `<Sip>` noun with `answerOnBridge="true"`, so the inbound caller remains in ringing state until the SIP endpoint answers instead of being prematurely answered before bridging. If you also enable `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL=true`, the service will try the SIP softphone first and then switch the caller to voicemail when the SIP leg is not answered or fails. Use `CALL_FORWARD_SIP_TIMEOUT_SECONDS` to shorten how long the SIP app rings before that fallback happens. Reliable background ringing depends on the chosen SIP provider and softphone supporting push notifications.
 
 ## Cloud Run deployment
 
@@ -146,6 +146,15 @@ For a lightweight startup check without Telnyx signature headers:
 
 ```bash
 curl http://localhost:8080/health
+```
+
+## Tests
+
+Install development dependencies and run the test suite with:
+
+```bash
+composer install
+composer test
 ```
 
 The container image also includes a Docker `HEALTHCHECK` that calls this endpoint internally.

@@ -95,6 +95,7 @@ class CallController
     private function buildDirectDialResponse(string $callerNumber): string
     {
         $escapedDestination = htmlspecialchars($this->forwardDestination, ENT_QUOTES | ENT_XML1, 'UTF-8');
+        $escapedCallerNumber = htmlspecialchars($callerNumber, ENT_QUOTES | ENT_XML1, 'UTF-8');
 
         if ($this->forwardDestinationType === self::DESTINATION_TYPE_SIP) {
             $dialFallbackAttributes = $this->enableSipFallbackToVoicemail ? ' action="/dial-fallback" method="POST"' : '';
@@ -102,8 +103,8 @@ class CallController
 
             return <<<XML
             <Response>
-                <Dial{$dialFallbackAttributes}{$dialTimeoutAttribute} callerId="{$callerNumber}" record="record-from-answer">
-                    <SIP>{$escapedDestination}</SIP>
+                <Dial{$dialFallbackAttributes}{$dialTimeoutAttribute} answerOnBridge="true" callerId="{$escapedCallerNumber}" record="record-from-answer">
+                    <Sip>{$escapedDestination}</Sip>
                 </Dial>
             </Response>
             XML;
@@ -115,7 +116,7 @@ class CallController
 
         return <<<XML
             <Response>
-                <Dial callerId="{$callerNumber}" record="record-from-answer">
+                <Dial callerId="{$escapedCallerNumber}" record="record-from-answer">
                     <Number>{$escapedDestination}</Number>
                 </Dial>
             </Response>

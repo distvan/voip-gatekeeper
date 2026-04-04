@@ -2,3 +2,6 @@
 .gitignore
 .vscode
 vendor
+tests
+phpunit.xml
+.phpunit.cache

@@ -72,8 +72,16 @@ class TelnyxSignatureMiddleware implements Middleware
 
             if ($decodedSignature === false) {
                 $errorMessage = 'Invalid signature encoding';
-            } elseif (!sodium_crypto_sign_verify_detached($decodedSignature, $payload, $this->publicKey)) {
-                $errorMessage = 'Invalid signature';
+            } else {
+                try {
+                    $isValidSignature = sodium_crypto_sign_verify_detached($decodedSignature, $payload, $this->publicKey);
+                } catch (\SodiumException) {
+                    $isValidSignature = false;
+                }
+
+                if (!$isValidSignature) {
+                    $errorMessage = 'Invalid signature';
+                }
             }
         }
 

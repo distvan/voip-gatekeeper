@@ -4,3 +4,6 @@
 .vscode
 vendor
 README.md
+tests
+phpunit.xml
+.phpunit.cache
