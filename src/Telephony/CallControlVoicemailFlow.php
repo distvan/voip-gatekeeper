@@ -42,6 +42,26 @@ final class CallControlVoicemailFlow
     }
 
     /**
+     * @param array<string, mixed> $clientState
+     * @return array<string, mixed>
+     */
+    public function startPromptForIncomingCall(string $callControlId, array $clientState, string $eventId): array
+    {
+        try {
+            $this->callControlClient->answer($callControlId, $eventId . '-answer');
+        } catch (CallControlException $exception) {
+            return ['status' => 'error', 'reason' => $exception->getMessage()];
+        }
+
+        return $this->speakText(
+            $callControlId,
+            'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+            $this->withStage($clientState, self::VOICEMAIL_PROMPT_STAGE),
+            $eventId . '-voicemail-menu'
+        );
+    }
+
+    /**
      * @param array<string, mixed> $normalizedEvent
      * @return array<string, mixed>
      */

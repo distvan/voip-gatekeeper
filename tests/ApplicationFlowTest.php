@@ -136,7 +136,7 @@ final class ApplicationFlowTest extends AppTestCase
         ], $commands->getArrayCopy());
     }
 
-    public function testCallControlWebhookIgnoresNonWhitelistedCaller(): void
+    public function testCallControlWebhookStartsVoicemailForNonWhitelistedCaller(): void
     {
         $commands = new ArrayObject();
         $client = $this->createFakeCallControlClient($commands);
@@ -171,8 +171,30 @@ final class ApplicationFlowTest extends AppTestCase
         $response = $app->handle($request);
 
         self::assertSame(200, $response->getStatusCode());
-        self::assertStringContainsString('ignored', $this->readBody($response));
-        self::assertSame([], $commands->getArrayCopy());
+        self::assertStringContainsString('voicemail_prompt_started', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'answer',
+                'callControlId' => 'call-456',
+                'commandId' => 'evt-456-answer',
+            ],
+            [
+                'action' => 'speak',
+                'callControlId' => 'call-456',
+                'payload' => 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+                'voice' => 'alice',
+                'language' => 'hu-HU',
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'call-456',
+                    'inbound_call_session_id' => '',
+                    'caller' => self::CALLER_NUMBER,
+                    'flow' => 'voicemail',
+                    'stage' => 'voicemail_prompt',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-456-voicemail-menu',
+            ],
+        ], $commands->getArrayCopy());
     }
 
     public function testCallControlWebhookAcknowledgesAnsweredOutgoingLeg(): void

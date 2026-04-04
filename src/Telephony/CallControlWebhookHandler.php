@@ -171,7 +171,7 @@ final class CallControlWebhookHandler
         $payload = $this->handleHangupEvent($normalizedEvent);
 
         if ($eventType === 'call.initiated') {
-            $payload = $this->forwardWhitelistedCall($normalizedEvent);
+            $payload = $this->handleIncomingInitiatedCall($normalizedEvent);
         } elseif ($eventType === 'call.answered') {
             $payload = $this->handleAnsweredEvent($normalizedEvent);
         } elseif ($eventType === 'call.bridged') {
@@ -197,17 +197,9 @@ final class CallControlWebhookHandler
      * @param array<string, mixed> $normalizedEvent
      * @return array<string, mixed>
      */
-    private function forwardWhitelistedCall(array $normalizedEvent): array
+    private function handleIncomingInitiatedCall(array $normalizedEvent): array
     {
         $callerNumber = is_string($normalizedEvent['from'] ?? null) ? $normalizedEvent['from'] : '';
-
-        if (!$this->isCallerWhitelisted($callerNumber)) {
-            return [
-                'status' => 'ignored',
-                'reason' => 'Non-whitelisted callers are not yet handled by Call Control',
-            ];
-        }
-
         $callControlId = (string) $normalizedEvent['callControlId'];
         $eventId = is_string($normalizedEvent['eventId'] ?? null) && $normalizedEvent['eventId'] !== ''
             ? $normalizedEvent['eventId']
@@ -215,6 +207,27 @@ final class CallControlWebhookHandler
         $callSessionId = is_string($normalizedEvent['callSessionId'] ?? null)
             ? $normalizedEvent['callSessionId']
             : '';
+
+        if (!$this->isCallerWhitelisted($callerNumber)) {
+            if ($this->voicemailFlow === null) {
+                return [
+                    'status' => 'ignored',
+                    'reason' => self::VOICEMAIL_FLOW_NOT_CONFIGURED_REASON,
+                ];
+            }
+
+            return $this->voicemailFlow->startPromptForIncomingCall(
+                $callControlId,
+                [
+                    'version' => self::CALL_CONTROL_CONTEXT_VERSION,
+                    'inbound_call_control_id' => $callControlId,
+                    'inbound_call_session_id' => $callSessionId,
+                    'caller' => $callerNumber,
+                ],
+                $eventId
+            );
+        }
+
         $connectionId = is_string($normalizedEvent['connectionId'] ?? null)
             ? $normalizedEvent['connectionId']
             : '';
