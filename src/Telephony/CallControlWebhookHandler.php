@@ -9,6 +9,7 @@ final class CallControlWebhookHandler
     private const CALL_CONTROL_CONTEXT_VERSION = 1;
     private const FORWARDING_STARTED_STATUS = 'forwarding_started';
     private const VOICEMAIL_FLOW_NOT_CONFIGURED_REASON = 'Voicemail flow is not configured';
+    private const OUTBOUND_HANGUP_LOG_EVENT = 'call_control_outbound_hangup';
     private const SUPPORTED_FAILURE_CAUSES = [
         'busy',
         'call_rejected',
@@ -115,17 +116,29 @@ final class CallControlWebhookHandler
         return [
             'eventId' => is_string($data['id'] ?? null) ? trim($data['id']) : '',
             'eventType' => is_string($data['event_type'] ?? null) ? trim($data['event_type']) : '',
-            'callControlId' => is_string($payload['call_control_id'] ?? null) ? trim($payload['call_control_id']) : '',
-            'callSessionId' => is_string($payload['call_session_id'] ?? null) ? trim($payload['call_session_id']) : '',
-            'direction' => is_string($payload['direction'] ?? null) ? trim($payload['direction']) : '',
-            'from' => is_string($payload['from'] ?? null) ? trim($payload['from']) : '',
-            'to' => is_string($payload['to'] ?? null) ? trim($payload['to']) : '',
-            'state' => is_string($payload['state'] ?? null) ? trim($payload['state']) : '',
-            'hangupCause' => is_string($payload['hangup_cause'] ?? null) ? trim($payload['hangup_cause']) : '',
-            'digits' => is_string($payload['digits'] ?? null) ? trim($payload['digits']) : '',
-            'gatherStatus' => is_string($payload['status'] ?? null) ? trim($payload['status']) : '',
+            'callControlId' => $this->getPayloadString($payload, 'call_control_id'),
+            'callSessionId' => $this->getPayloadString($payload, 'call_session_id'),
+            'connectionId' => $this->getPayloadString($payload, 'connection_id'),
+            'direction' => $this->getPayloadString($payload, 'direction'),
+            'from' => $this->getPayloadString($payload, 'from'),
+            'to' => $this->getPayloadString($payload, 'to'),
+            'state' => $this->getPayloadString($payload, 'state'),
+            'hangupCause' => $this->getPayloadString($payload, 'hangup_cause'),
+            'sipHangupCause' => $this->getPayloadString($payload, 'sip_hangup_cause'),
+            'digits' => $this->getPayloadString($payload, 'digits'),
+            'gatherStatus' => $this->getPayloadString($payload, 'status'),
             'clientState' => $this->decodeClientState($payload['client_state'] ?? null),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function getPayloadString(array $payload, string $key): string
+    {
+        $value = $payload[$key] ?? null;
+
+        return is_string($value) ? trim($value) : '';
     }
 
     /**
@@ -136,14 +149,15 @@ final class CallControlWebhookHandler
         $eventType = $normalizedEvent['eventType'] ?? '';
         $callControlId = $normalizedEvent['callControlId'] ?? '';
         $direction = $normalizedEvent['direction'] ?? '';
+        $hasClientState = is_array($normalizedEvent['clientState'] ?? null);
         $isOutgoingLifecycleEvent = in_array($eventType, ['call.answered', 'call.bridged', 'call.hangup'], true);
         $isInboundFlowEvent = in_array($eventType, ['call.speak.ended', 'call.gather.ended', 'call.recording.saved'], true);
 
         return $callControlId !== ''
             && (
                 ($eventType === 'call.initiated' && $direction === 'incoming')
-                || ($isOutgoingLifecycleEvent && $direction === 'outgoing')
-            || $isInboundFlowEvent
+                || ($isOutgoingLifecycleEvent && ($direction === 'outgoing' || $hasClientState))
+                || $isInboundFlowEvent
             );
     }
 
@@ -201,6 +215,9 @@ final class CallControlWebhookHandler
         $callSessionId = is_string($normalizedEvent['callSessionId'] ?? null)
             ? $normalizedEvent['callSessionId']
             : '';
+        $connectionId = is_string($normalizedEvent['connectionId'] ?? null)
+            ? $normalizedEvent['connectionId']
+            : '';
         $fromAddress = $this->getOutboundFromAddress(
             ['to' => $normalizedEvent['to'] ?? null],
             $callerNumber
@@ -222,6 +239,7 @@ final class CallControlWebhookHandler
                 new CallControlDialOptions(
                     timeoutSeconds: $this->sipTimeoutSeconds,
                     bridgeIntent: true,
+                    connectionId: $connectionId,
                     linkTo: $callControlId,
                     bridgeOnAnswer: true,
                     clientState: $clientState,
@@ -289,6 +307,7 @@ final class CallControlWebhookHandler
     {
         $clientState = $normalizedEvent['clientState'] ?? null;
         $hangupCause = strtolower(is_string($normalizedEvent['hangupCause'] ?? null) ? $normalizedEvent['hangupCause'] : '');
+        $this->logOutboundHangup($normalizedEvent, is_array($clientState));
         $payload = [
             'status' => 'ignored',
             'reason' => 'Outbound hangup event is missing correlation state',
@@ -385,5 +404,33 @@ final class CallControlWebhookHandler
         }
 
         return base64_encode($encoded);
+    }
+
+    /**
+     * @param array<string, mixed> $normalizedEvent
+     */
+    private function logOutboundHangup(array $normalizedEvent, bool $hasClientState): void
+    {
+        if (($normalizedEvent['eventType'] ?? '') !== 'call.hangup') {
+            return;
+        }
+
+        $logLine = json_encode([
+            'event' => self::OUTBOUND_HANGUP_LOG_EVENT,
+            'call_control_id' => $normalizedEvent['callControlId'] ?? '',
+            'call_session_id' => $normalizedEvent['callSessionId'] ?? '',
+            'connection_id' => $normalizedEvent['connectionId'] ?? '',
+            'direction' => $normalizedEvent['direction'] ?? '',
+            'from' => $normalizedEvent['from'] ?? '',
+            'to' => $normalizedEvent['to'] ?? '',
+            'state' => $normalizedEvent['state'] ?? '',
+            'hangup_cause' => $normalizedEvent['hangupCause'] ?? '',
+            'sip_hangup_cause' => $normalizedEvent['sipHangupCause'] ?? '',
+            'has_client_state' => $hasClientState,
+        ], JSON_UNESCAPED_SLASHES);
+
+        if (is_string($logLine) && $logLine !== '') {
+            error_log($logLine);
+        }
     }
 }

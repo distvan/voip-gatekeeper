@@ -129,6 +129,10 @@ final class TelnyxCallControlClient implements CallControlClientInterface
             'bridge_intent' => $options->bridgeIntent,
         ];
 
+        if ($options->connectionId !== null && $options->connectionId !== '') {
+            $payload['connection_id'] = $options->connectionId;
+        }
+
         if ($options->linkTo !== null && $options->linkTo !== '') {
             $payload['link_to'] = $options->linkTo;
         }

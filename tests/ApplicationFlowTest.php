@@ -87,6 +87,7 @@ final class ApplicationFlowTest extends AppTestCase
                 'payload' => [
                     'call_control_id' => 'call-123',
                     'call_session_id' => 'session-123',
+                    'connection_id' => 'conn-123',
                     'direction' => 'incoming',
                     'from' => self::CALLER_NUMBER,
                     'to' => self::INBOUND_DESTINATION_NUMBER,
@@ -120,6 +121,7 @@ final class ApplicationFlowTest extends AppTestCase
                 'from' => self::INBOUND_DESTINATION_NUMBER,
                 'timeoutSeconds' => 12,
                 'bridgeIntent' => true,
+                'connectionId' => 'conn-123',
                 'linkTo' => 'call-123',
                 'bridgeOnAnswer' => true,
                 'clientState' => base64_encode(json_encode([
@@ -213,6 +215,56 @@ final class ApplicationFlowTest extends AppTestCase
         self::assertSame(200, $response->getStatusCode());
         self::assertStringContainsString('forwarding_answered', $this->readBody($response));
         self::assertSame([], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookAcceptsCorrelatedHangupWithoutDirection(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-no-direction-hangup',
+                'event_type' => 'call.hangup',
+                'payload' => [
+                    'call_control_id' => 'outbound-leg-3',
+                    'hangup_cause' => 'user_busy',
+                    'sip_hangup_cause' => '486',
+                    'to' => self::SIP_DESTINATION,
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-3',
+                        'flow' => 'direct_forward',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('forwarding_failed', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'hangup',
+                'callControlId' => 'inbound-leg-3',
+                'commandId' => 'evt-no-direction-hangup-cleanup',
+            ],
+        ], $commands->getArrayCopy());
     }
 
     public function testCallControlWebhookStartsVoicemailPromptAfterFailedOutgoingDial(): void
@@ -732,6 +784,7 @@ final class ApplicationFlowTest extends AppTestCase
                     'from' => $from,
                     'timeoutSeconds' => $options->timeoutSeconds,
                     'bridgeIntent' => $options->bridgeIntent,
+                    'connectionId' => $options->connectionId,
                     'linkTo' => $options->linkTo,
                     'bridgeOnAnswer' => $options->bridgeOnAnswer,
                     'clientState' => $options->clientState,

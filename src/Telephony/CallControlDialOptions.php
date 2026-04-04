@@ -7,6 +7,7 @@ final class CallControlDialOptions
     public function __construct(
         public readonly ?int $timeoutSeconds = null,
         public readonly bool $bridgeIntent = true,
+        public readonly ?string $connectionId = null,
         public readonly ?string $linkTo = null,
         public readonly bool $bridgeOnAnswer = false,
         public readonly ?string $clientState = null,
