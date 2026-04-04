@@ -89,6 +89,7 @@ abstract class AppTestCase extends TestCase
             'CALL_FORWARD_SIP_URI' => false,
             'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => false,
             'CALL_FORWARD_SIP_TIMEOUT_SECONDS' => false,
+            'TELNYX_API_KEY' => false,
             'TELNYX_TTS_VOICE' => false,
             'TELNYX_TTS_LANGUAGE' => false,
             'WHITELISTED_CALLERS' => false,

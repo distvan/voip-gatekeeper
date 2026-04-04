@@ -30,17 +30,16 @@ class CallController
         string $forwardDestination,
         bool $enableSipFallbackToVoicemail = false,
         ?int $sipTimeoutSeconds = null,
-        string $sayVoice = 'alice',
-        string $sayLanguage = 'hu-HU',
-        array $whitelistedCallers = []
+        array $whitelistedCallers = [],
+        array $speechSettings = []
     )
     {
         $this->forwardDestinationType = $forwardDestinationType;
         $this->forwardDestination = $forwardDestination;
         $this->enableSipFallbackToVoicemail = $enableSipFallbackToVoicemail;
         $this->sipTimeoutSeconds = $sipTimeoutSeconds;
-        $this->sayVoice = $sayVoice;
-        $this->sayLanguage = $sayLanguage;
+        $this->sayVoice = is_string($speechSettings['voice'] ?? null) ? $speechSettings['voice'] : 'alice';
+        $this->sayLanguage = is_string($speechSettings['language'] ?? null) ? $speechSettings['language'] : 'hu-HU';
         $this->whitelistedCallers = $whitelistedCallers;
     }
 
@@ -86,7 +85,6 @@ class CallController
 
         return is_string($callerNumber) ? trim($callerNumber) : '';
     }
-
     private function isCallerWhitelisted(string $callerNumber): bool
     {
         return $callerNumber !== '' && isset($this->whitelistedCallers[$callerNumber]);

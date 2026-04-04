@@ -2,10 +2,18 @@
 
 namespace Tests;
 
+use App\Telephony\CallControlClientInterface;
+use App\Telephony\CallControlDialOptions;
+use App\Telephony\CallControlRecordingOptions;
+use ArrayObject;
+
 final class ApplicationFlowTest extends AppTestCase
 {
+    private const CALL_CONTROL_JSON_CONTENT_TYPE = 'application/json';
+    private const CALL_CONTROL_WEBHOOK_PATH = '/call-control/incoming';
     private const CALLER_NUMBER = '+36301234567';
     private const INCOMING_CALL_PATH = '/incoming-call';
+    private const INBOUND_DESTINATION_NUMBER = '+36111111111';
     private const SIP_DESTINATION = 'sip:desk@pbx.example.com';
 
     public function testIncomingCallForNonWhitelistedCallerPromptsForVoicemail(): void
@@ -57,6 +65,435 @@ final class ApplicationFlowTest extends AppTestCase
         self::assertStringContainsString('answerOnBridge="true"', $body);
         self::assertStringContainsString('callerId="' . self::CALLER_NUMBER . '"', $body);
         self::assertStringContainsString('<Sip>' . self::SIP_DESTINATION . '</Sip>', $body);
+    }
+
+    public function testCallControlWebhookForWhitelistedCallerAnswersAndDialsSipDestination(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_SIP_TIMEOUT_SECONDS' => '12',
+            'WHITELISTED_CALLERS' => self::CALLER_NUMBER,
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-123',
+                'event_type' => 'call.initiated',
+                'payload' => [
+                    'call_control_id' => 'call-123',
+                    'call_session_id' => 'session-123',
+                    'direction' => 'incoming',
+                    'from' => self::CALLER_NUMBER,
+                    'to' => self::INBOUND_DESTINATION_NUMBER,
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(self::CALL_CONTROL_JSON_CONTENT_TYPE, $response->getHeaderLine('Content-Type'));
+        self::assertStringContainsString('forwarding_started', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'answer',
+                'callControlId' => 'call-123',
+                'commandId' => 'evt-123-answer',
+            ],
+            [
+                'action' => 'dial',
+                'callControlId' => 'call-123',
+                'destination' => self::SIP_DESTINATION,
+                'from' => self::INBOUND_DESTINATION_NUMBER,
+                'timeoutSeconds' => 12,
+                'bridgeIntent' => true,
+                'linkTo' => 'call-123',
+                'bridgeOnAnswer' => true,
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'call-123',
+                    'inbound_call_session_id' => 'session-123',
+                    'caller' => self::CALLER_NUMBER,
+                    'flow' => 'direct_forward',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-123-dial',
+            ],
+        ], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookIgnoresNonWhitelistedCaller(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-456',
+                'event_type' => 'call.initiated',
+                'payload' => [
+                    'call_control_id' => 'call-456',
+                    'direction' => 'incoming',
+                    'from' => self::CALLER_NUMBER,
+                    'to' => self::INBOUND_DESTINATION_NUMBER,
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('ignored', $this->readBody($response));
+        self::assertSame([], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookAcknowledgesAnsweredOutgoingLeg(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-answered',
+                'event_type' => 'call.answered',
+                'payload' => [
+                    'call_control_id' => 'outbound-leg-1',
+                    'direction' => 'outgoing',
+                    'state' => 'answered',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-1',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('forwarding_answered', $this->readBody($response));
+        self::assertSame([], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookStartsVoicemailPromptAfterFailedOutgoingDial(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-hangup',
+                'event_type' => 'call.hangup',
+                'payload' => [
+                    'call_control_id' => 'outbound-leg-2',
+                    'direction' => 'outgoing',
+                    'hangup_cause' => 'timeout',
+                    'state' => 'hangup',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-2',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('voicemail_prompt_started', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'speak',
+                'callControlId' => 'inbound-leg-2',
+                'payload' => 'A hívott SIP végpont nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+                'voice' => 'alice',
+                'language' => 'hu-HU',
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'inbound-leg-2',
+                    'flow' => 'voicemail',
+                    'stage' => 'voicemail_prompt',
+                    'hangup_cause' => 'timeout',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-hangup-voicemail-menu',
+            ],
+        ], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookStartsGatherAfterVoicemailPromptEnds(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-speak-end',
+                'event_type' => 'call.speak.ended',
+                'payload' => [
+                    'call_control_id' => 'inbound-leg-2',
+                    'status' => 'completed',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-2',
+                        'flow' => 'voicemail',
+                        'stage' => 'voicemail_prompt',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest('POST', self::CALL_CONTROL_WEBHOOK_PATH, [], ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE], null, $payload === false ? '{}' : $payload);
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('voicemail_gather_started', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'gather',
+                'callControlId' => 'inbound-leg-2',
+                'validDigits' => '1',
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'inbound-leg-2',
+                    'flow' => 'voicemail',
+                    'stage' => 'voicemail_gather',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-speak-end-gather',
+                'maximumDigits' => 1,
+                'initialTimeoutMillis' => 5000,
+            ],
+        ], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookStartsRecordingAfterVoicemailGatherConfirms(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-gather-end',
+                'event_type' => 'call.gather.ended',
+                'payload' => [
+                    'call_control_id' => 'inbound-leg-2',
+                    'digits' => '1',
+                    'status' => 'valid',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-2',
+                        'flow' => 'voicemail',
+                        'stage' => 'voicemail_gather',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest('POST', self::CALL_CONTROL_WEBHOOK_PATH, [], ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE], null, $payload === false ? '{}' : $payload);
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('voicemail_prompt_started', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'speak',
+                'callControlId' => 'inbound-leg-2',
+                'payload' => 'Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.',
+                'voice' => 'alice',
+                'language' => 'hu-HU',
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'inbound-leg-2',
+                    'flow' => 'voicemail',
+                    'stage' => 'voicemail_recording_prompt',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-gather-end-recording-prompt',
+            ],
+        ], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookSavesVoicemailAndCompletesCall(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $recordingPromptPayload = json_encode([
+            'data' => [
+                'id' => 'evt-recording-prompt-end',
+                'event_type' => 'call.speak.ended',
+                'payload' => [
+                    'call_control_id' => 'inbound-leg-2',
+                    'status' => 'completed',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-2',
+                        'flow' => 'voicemail',
+                        'stage' => 'voicemail_recording_prompt',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $recordingSavedPayload = json_encode([
+            'data' => [
+                'id' => 'evt-recording-saved',
+                'event_type' => 'call.recording.saved',
+                'payload' => [
+                    'call_control_id' => 'inbound-leg-2',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-2',
+                        'flow' => 'voicemail',
+                        'stage' => 'voicemail_recording',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $completeSpeakEndedPayload = json_encode([
+            'data' => [
+                'id' => 'evt-complete-speak-end',
+                'event_type' => 'call.speak.ended',
+                'payload' => [
+                    'call_control_id' => 'inbound-leg-2',
+                    'status' => 'completed',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-2',
+                        'flow' => 'voicemail',
+                        'stage' => 'voicemail_complete',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $recordingPromptRequest = $this->createSignedRequest('POST', self::CALL_CONTROL_WEBHOOK_PATH, [], ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE], null, $recordingPromptPayload === false ? '{}' : $recordingPromptPayload);
+        $recordingPromptResponse = $app->handle($recordingPromptRequest);
+        self::assertSame(200, $recordingPromptResponse->getStatusCode());
+        self::assertStringContainsString('voicemail_recording_started', $this->readBody($recordingPromptResponse));
+
+        $recordingSavedRequest = $this->createSignedRequest('POST', self::CALL_CONTROL_WEBHOOK_PATH, [], ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE], null, $recordingSavedPayload === false ? '{}' : $recordingSavedPayload);
+        $recordingSavedResponse = $app->handle($recordingSavedRequest);
+        self::assertSame(200, $recordingSavedResponse->getStatusCode());
+        self::assertStringContainsString('voicemail_prompt_started', $this->readBody($recordingSavedResponse));
+
+        $completeSpeakEndedRequest = $this->createSignedRequest('POST', self::CALL_CONTROL_WEBHOOK_PATH, [], ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE], null, $completeSpeakEndedPayload === false ? '{}' : $completeSpeakEndedPayload);
+        $completeSpeakEndedResponse = $app->handle($completeSpeakEndedRequest);
+        self::assertSame(200, $completeSpeakEndedResponse->getStatusCode());
+        self::assertStringContainsString('call_completed', $this->readBody($completeSpeakEndedResponse));
+
+        self::assertSame([
+            [
+                'action' => 'record-start',
+                'callControlId' => 'inbound-leg-2',
+                'format' => 'mp3',
+                'channels' => 'single',
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'inbound-leg-2',
+                    'flow' => 'voicemail',
+                    'stage' => 'voicemail_recording',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-recording-prompt-end-record-start',
+                'playBeep' => true,
+                'maxLength' => 120,
+                'timeoutSeconds' => 5,
+            ],
+            [
+                'action' => 'speak',
+                'callControlId' => 'inbound-leg-2',
+                'payload' => 'Köszönöm az üzenetet. Viszonthallásra.',
+                'voice' => 'alice',
+                'language' => 'hu-HU',
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'inbound-leg-2',
+                    'flow' => 'voicemail',
+                    'stage' => 'voicemail_complete',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-recording-saved-complete',
+            ],
+            [
+                'action' => 'hangup',
+                'callControlId' => 'inbound-leg-2',
+                'commandId' => 'evt-complete-speak-end-hangup',
+            ],
+        ], $commands->getArrayCopy());
     }
 
     public function testCustomVoiceOmitsLanguageAttribute(): void
@@ -190,5 +627,117 @@ final class ApplicationFlowTest extends AppTestCase
 
         self::assertSame(403, $response->getStatusCode());
         self::assertSame('Stale webhook timestamp', $this->readBody($response));
+    }
+
+    /**
+     * @param ArrayObject<int, array<string, mixed>> $commands
+     */
+    private function createFakeCallControlClient(ArrayObject $commands): CallControlClientInterface
+    {
+        return new class($commands) implements CallControlClientInterface {
+            /** @var ArrayObject<int, array<string, mixed>> */
+            private ArrayObject $commands;
+
+            /** @param ArrayObject<int, array<string, mixed>> $commands */
+            public function __construct(ArrayObject $commands)
+            {
+                $this->commands = $commands;
+            }
+
+            public function answer(string $callControlId, ?string $commandId = null): void
+            {
+                $this->commands->append([
+                    'action' => 'answer',
+                    'callControlId' => $callControlId,
+                    'commandId' => $commandId,
+                ]);
+            }
+
+            public function speakText(
+                string $callControlId,
+                string $payload,
+                string $voice,
+                ?string $language = null,
+                ?string $clientState = null,
+                ?string $commandId = null
+            ): void {
+                $this->commands->append([
+                    'action' => 'speak',
+                    'callControlId' => $callControlId,
+                    'payload' => $payload,
+                    'voice' => $voice,
+                    'language' => $language,
+                    'clientState' => $clientState,
+                    'commandId' => $commandId,
+                ]);
+            }
+
+            public function gather(
+                string $callControlId,
+                string $validDigits = '123',
+                ?string $clientState = null,
+                ?string $commandId = null,
+                int $maximumDigits = 1,
+                int $initialTimeoutMillis = 5000
+            ): void {
+                $this->commands->append([
+                    'action' => 'gather',
+                    'callControlId' => $callControlId,
+                    'validDigits' => $validDigits,
+                    'clientState' => $clientState,
+                    'commandId' => $commandId,
+                    'maximumDigits' => $maximumDigits,
+                    'initialTimeoutMillis' => $initialTimeoutMillis,
+                ]);
+            }
+
+            public function startRecording(string $callControlId, ?CallControlRecordingOptions $options = null): void
+            {
+                $options ??= new CallControlRecordingOptions();
+
+                $this->commands->append([
+                    'action' => 'record-start',
+                    'callControlId' => $callControlId,
+                    'format' => $options->format,
+                    'channels' => $options->channels,
+                    'clientState' => $options->clientState,
+                    'commandId' => $options->commandId,
+                    'playBeep' => $options->playBeep,
+                    'maxLength' => $options->maxLength,
+                    'timeoutSeconds' => $options->timeoutSeconds,
+                ]);
+            }
+
+            public function hangup(string $callControlId, ?string $commandId = null): void
+            {
+                $this->commands->append([
+                    'action' => 'hangup',
+                    'callControlId' => $callControlId,
+                    'commandId' => $commandId,
+                ]);
+            }
+
+            public function dial(
+                string $callControlId,
+                string $destination,
+                string $from,
+                ?CallControlDialOptions $options = null
+            ): void {
+                $options ??= new CallControlDialOptions();
+
+                $this->commands->append([
+                    'action' => 'dial',
+                    'callControlId' => $callControlId,
+                    'destination' => $destination,
+                    'from' => $from,
+                    'timeoutSeconds' => $options->timeoutSeconds,
+                    'bridgeIntent' => $options->bridgeIntent,
+                    'linkTo' => $options->linkTo,
+                    'bridgeOnAnswer' => $options->bridgeOnAnswer,
+                    'clientState' => $options->clientState,
+                    'commandId' => $options->commandId,
+                ]);
+            }
+        };
     }
 }

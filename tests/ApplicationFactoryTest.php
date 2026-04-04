@@ -66,6 +66,7 @@ final class ApplicationFactoryTest extends AppTestCase
         putenv('CALL_FORWARD_SIP_URI');
         putenv('CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL');
         putenv('CALL_FORWARD_SIP_TIMEOUT_SECONDS');
+        putenv('TELNYX_API_KEY');
         putenv('TELNYX_TTS_VOICE');
         putenv('TELNYX_TTS_LANGUAGE');
         putenv('WHITELISTED_CALLERS');

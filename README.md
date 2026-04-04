@@ -13,6 +13,7 @@ CALL_FORWARD_NUMBER
 CALL_FORWARD_SIP_URI
 CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL
 CALL_FORWARD_SIP_TIMEOUT_SECONDS
+TELNYX_API_KEY
 TELNYX_TTS_VOICE
 TELNYX_TTS_LANGUAGE
 WHITELISTED_CALLERS
@@ -24,11 +25,31 @@ WHITELISTED_CALLERS
 - `CALL_FORWARD_SIP_URI`: destination SIP URI, required only when `CALL_FORWARD_DESTINATION_TYPE=sip`, for example `sip:your-user@pbx.example.com`
 - `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL`: optional boolean, used only with `CALL_FORWARD_DESTINATION_TYPE=sip`. When `true`, whitelisted callers are sent to voicemail if the SIP call ends with `busy`, `no-answer`, `canceled`, or `failed`.
 - `CALL_FORWARD_SIP_TIMEOUT_SECONDS`: optional integer between `5` and `120`, used only with `CALL_FORWARD_DESTINATION_TYPE=sip`. This sets the SIP ring timeout on the `Dial` verb so fallback to voicemail can start sooner than the provider default.
+- `TELNYX_API_KEY`: optional Telnyx API key used only by the new Call Control webhook path. It is required if you point a Voice API Call Control application at this service.
 - `TELNYX_TTS_VOICE`: optional TTS voice. Default is `alice`. For Hungarian, prefer a provider-specific Hungarian voice rather than `alice`, for example `Azure.hu-HU-NoemiNeural` if that voice is enabled in your Telnyx setup.
 - `TELNYX_TTS_LANGUAGE`: optional language used only when `TELNYX_TTS_VOICE=alice`. Default is `hu-HU`.
 - `WHITELISTED_CALLERS`: optional comma-separated list of caller numbers in E.164 format, for example `+36201234567,+36701234567`. Whitelisted callers are connected directly to the configured forwarding destination without the normal announcement and confirmation flow. All other callers continue through the normal incoming-call flow, where pressing `1` records a voicemail instead of calling you.
 
 For your original use case, `sip` mode is the recommended way to ring a softphone app on your current phone without needing a second SIM or a second receiving mobile number. The generated TeXML now uses Telnyx's documented `<Sip>` noun with `answerOnBridge="true"`, so the inbound caller remains in ringing state until the SIP endpoint answers instead of being prematurely answered before bridging. If you also enable `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL=true`, the service will try the SIP softphone first and then switch the caller to voicemail when the SIP leg is not answered or fails. Use `CALL_FORWARD_SIP_TIMEOUT_SECONDS` to shorten how long the SIP app rings before that fallback happens. Reliable background ringing depends on the chosen SIP provider and softphone supporting push notifications.
+
+## Call Control migration slice
+
+The repository now also exposes a Call Control webhook endpoint at `/call-control/incoming`.
+
+This is an initial migration slice intended for direct forwarding flows. When the service receives a `call.initiated` webhook for a whitelisted caller and `TELNYX_API_KEY` is configured, it answers the inbound leg and sends a Telnyx Call Control `dial` command to the configured forwarding destination.
+
+The outbound Call Control dial now carries `link_to`, `bridge_on_answer`, and a correlated `client_state`, so Telnyx can bridge the SIP leg back to the inbound caller as soon as the SIP destination answers instead of relying on the previous parked TeXML behavior.
+
+When SIP forwarding fails and `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL=true`, the Call Control path now keeps the inbound leg alive, plays a Hungarian voicemail prompt, gathers `1` for confirmation, starts call recording, and finishes with a spoken thank-you after `call.recording.saved`.
+
+Current scope and limitation:
+
+- the existing TeXML routes are still present and unchanged
+- the Call Control endpoint now handles the whitelisted direct-forwarding lifecycle, including outbound `call.answered`, `call.bridged`, failed `call.hangup`, and Call Control voicemail fallback sequencing
+- the non-whitelisted voicemail flow still lives on the TeXML side and has not yet been reimplemented under Call Control
+- the Call Control voicemail branch currently ends recording on silence or max length; unlike the TeXML branch, it does not yet stop on `#`
+
+If you point a Telnyx Call Control Voice API application at this service, use `/call-control/incoming` as the webhook URL and set `TELNYX_API_KEY` in the runtime environment.
 
 ## Cloud Run deployment
 

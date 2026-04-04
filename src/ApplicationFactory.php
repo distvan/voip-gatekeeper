@@ -2,11 +2,16 @@
 
 namespace App;
 
+use App\Controllers\CallControlController;
 use App\Controllers\CallController;
 use App\Exceptions\ConfigurationException;
 use App\Middleware\TelnyxSignatureMiddleware;
 use App\Support\E164PhoneNumber;
 use App\Support\SipUri;
+use App\Telephony\CallControlClientInterface;
+use App\Telephony\TelnyxCallControlClient;
+use App\Telephony\CallControlWebhookHandler;
+use App\Telephony\CallControlVoicemailFlow;
 use InvalidArgumentException;
 use Slim\App;
 use Slim\Factory\AppFactory as SlimAppFactory;
@@ -23,6 +28,7 @@ final class ApplicationFactory
         'CALL_FORWARD_SIP_URI',
         'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL',
         'CALL_FORWARD_SIP_TIMEOUT_SECONDS',
+        'TELNYX_API_KEY',
         'TELNYX_TTS_VOICE',
         'TELNYX_TTS_LANGUAGE',
         'WHITELISTED_CALLERS',
@@ -70,8 +76,11 @@ final class ApplicationFactory
         $parsedWhitelistedCallers = self::parseWhitelistedCallers(
             self::getOptionalString($configuration, 'WHITELISTED_CALLERS')
         );
+        $callControlClient = self::resolveCallControlClient($configuration);
         $ttsVoice = self::getOptionalString($configuration, 'TELNYX_TTS_VOICE');
         $ttsLanguage = self::getOptionalString($configuration, 'TELNYX_TTS_LANGUAGE');
+        $resolvedTtsVoice = $ttsVoice !== false && $ttsVoice !== '' ? $ttsVoice : 'alice';
+        $resolvedTtsLanguage = $ttsLanguage !== false && $ttsLanguage !== '' ? $ttsLanguage : 'hu-HU';
 
         $app = SlimAppFactory::create();
         $app->add(new TelnyxSignatureMiddleware($telnyxPublicKey));
@@ -89,12 +98,31 @@ final class ApplicationFactory
             $callForwardDestination,
             $enableSipFallbackToVoicemail,
             $sipTimeoutSeconds,
-            $ttsVoice !== false && $ttsVoice !== '' ? $ttsVoice : 'alice',
-            $ttsLanguage !== false && $ttsLanguage !== '' ? $ttsLanguage : 'hu-HU',
-            $parsedWhitelistedCallers
+            $parsedWhitelistedCallers,
+            [
+                'voice' => $resolvedTtsVoice,
+                'language' => $resolvedTtsLanguage,
+            ]
+        );
+        $callControlController = new CallControlController(
+            new CallControlWebhookHandler(
+                $callForwardDestinationType,
+                $callForwardDestination,
+                $sipTimeoutSeconds,
+                $parsedWhitelistedCallers,
+                $callControlClient,
+                $callControlClient === null ? null : new CallControlVoicemailFlow(
+                    $callForwardDestinationType,
+                    $enableSipFallbackToVoicemail,
+                    $callControlClient,
+                    $resolvedTtsVoice,
+                    $resolvedTtsLanguage
+                )
+            )
         );
 
         $app->post('/incoming-call', [$callController, 'incomingCall']);
+        $app->post('/call-control/incoming', [$callControlController, 'incomingWebhook']);
         $app->post('/dial-fallback', [$callController, 'dialFallback']);
         $app->post('/gather', [$callController, 'gather']);
         $app->post('/recording-complete', [$callController, 'recordingComplete']);
@@ -227,5 +255,29 @@ final class ApplicationFactory
         } catch (InvalidArgumentException) {
             throw new ConfigurationException('WHITELISTED_CALLERS must contain only valid E.164 phone numbers separated by commas.');
         }
+    }
+
+    /**
+     * @param array<string, mixed> $configuration
+     */
+    private static function resolveCallControlClient(array $configuration): ?CallControlClientInterface
+    {
+        $configuredClient = $configuration['CALL_CONTROL_CLIENT'] ?? null;
+
+        if ($configuredClient !== null) {
+            if (!$configuredClient instanceof CallControlClientInterface) {
+                throw new ConfigurationException('CALL_CONTROL_CLIENT must implement CallControlClientInterface.');
+            }
+
+            return $configuredClient;
+        }
+
+        $apiKey = self::getOptionalString($configuration, 'TELNYX_API_KEY');
+
+        if ($apiKey === false || $apiKey === '') {
+            return null;
+        }
+
+        return new TelnyxCallControlClient($apiKey);
     }
 }
