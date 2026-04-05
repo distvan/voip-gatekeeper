@@ -43,6 +43,8 @@ The outbound Call Control dial now carries `link_to`, `bridge_on_answer`, and a 
 
 When forwarding fails and `CALL_FORWARD_FALLBACK_TO_VOICEMAIL=true`, the Call Control path now keeps the inbound leg alive, plays a Hungarian voicemail prompt, gathers `1` for confirmation, starts call recording, and finishes with a spoken thank-you after `call.recording.saved`.
 
+For incoming `call.initiated` webhooks, the Call Control path now treats `state=bridging` as an already-active inbound leg. In that case it skips the `answer` command and starts direct forwarding or the voicemail prompt immediately, which avoids the invalid-answer rejection previously seen from Telnyx.
+
 Current scope and limitation:
 
 - the existing TeXML routes are still present and unchanged

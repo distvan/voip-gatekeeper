@@ -8,6 +8,7 @@ final class CallControlVoicemailFlow
 {
     private const DEFAULT_TTS_VOICE = 'Azure.hu-HU-NoemiNeural';
     private const DEFAULT_TTS_LANGUAGE = 'hu-HU';
+    private const VOICEMAIL_INCOMING_PROMPT = 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Az egyes gomb megnyomásával hangüzenetet hagyhat.';
     private const VOICEMAIL_MAX_LENGTH_SECONDS = 120;
     private const VOICEMAIL_INITIAL_TIMEOUT_MILLIS = 5000;
     private const VOICEMAIL_PROMPT_STAGE = 'voicemail_prompt';
@@ -46,17 +47,23 @@ final class CallControlVoicemailFlow
      * @param array<string, mixed> $clientState
      * @return array<string, mixed>
      */
-    public function startPromptForIncomingCall(string $callControlId, array $clientState, string $eventId): array
-    {
-        try {
-            $this->callControlClient->answer($callControlId, $eventId . '-answer');
-        } catch (CallControlException $exception) {
-            return ['status' => 'error', 'reason' => $exception->getMessage()];
+    public function startPromptForIncomingCall(
+        string $callControlId,
+        array $clientState,
+        string $eventId,
+        bool $shouldAnswer = true
+    ): array {
+        if ($shouldAnswer) {
+            try {
+                $this->callControlClient->answer($callControlId, $eventId . '-answer');
+            } catch (CallControlException $exception) {
+                return ['status' => 'error', 'reason' => $exception->getMessage()];
+            }
         }
 
         return $this->speakText(
             $callControlId,
-            'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+            self::VOICEMAIL_INCOMING_PROMPT,
             $this->withStage($clientState, self::VOICEMAIL_PROMPT_STAGE),
             $eventId . '-voicemail-menu'
         );

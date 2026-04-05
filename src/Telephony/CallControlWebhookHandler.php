@@ -8,6 +8,7 @@ final class CallControlWebhookHandler
 {
     private const CALL_CONTROL_CONTEXT_VERSION = 1;
     private const FORWARDING_STARTED_STATUS = 'forwarding_started';
+    private const INCOMING_ALREADY_ACTIVE_STATES = ['answered', 'bridged', 'bridging'];
     private const VOICEMAIL_FLOW_NOT_CONFIGURED_REASON = 'Voicemail flow is not configured';
     private const OUTBOUND_HANGUP_LOG_EVENT = 'call_control_outbound_hangup';
     private const SUPPORTED_FAILURE_CAUSES = [
@@ -201,6 +202,7 @@ final class CallControlWebhookHandler
     {
         $callerNumber = is_string($normalizedEvent['from'] ?? null) ? $normalizedEvent['from'] : '';
         $callControlId = (string) $normalizedEvent['callControlId'];
+        $shouldAnswerIncomingLeg = !$this->isIncomingLegAlreadyActive($normalizedEvent);
         $eventId = is_string($normalizedEvent['eventId'] ?? null) && $normalizedEvent['eventId'] !== ''
             ? $normalizedEvent['eventId']
             : $callControlId;
@@ -209,23 +211,26 @@ final class CallControlWebhookHandler
             : '';
 
         if (!$this->isCallerWhitelisted($callerNumber)) {
-            if ($this->voicemailFlow === null) {
-                return [
-                    'status' => 'ignored',
-                    'reason' => self::VOICEMAIL_FLOW_NOT_CONFIGURED_REASON,
-                ];
+            $payload = [
+                'status' => 'ignored',
+                'reason' => self::VOICEMAIL_FLOW_NOT_CONFIGURED_REASON,
+            ];
+
+            if ($this->voicemailFlow !== null) {
+                $payload = $this->voicemailFlow->startPromptForIncomingCall(
+                    $callControlId,
+                    [
+                        'version' => self::CALL_CONTROL_CONTEXT_VERSION,
+                        'inbound_call_control_id' => $callControlId,
+                        'inbound_call_session_id' => $callSessionId,
+                        'caller' => $callerNumber,
+                    ],
+                    $eventId,
+                    $shouldAnswerIncomingLeg
+                );
             }
 
-            return $this->voicemailFlow->startPromptForIncomingCall(
-                $callControlId,
-                [
-                    'version' => self::CALL_CONTROL_CONTEXT_VERSION,
-                    'inbound_call_control_id' => $callControlId,
-                    'inbound_call_session_id' => $callSessionId,
-                    'caller' => $callerNumber,
-                ],
-                $eventId
-            );
+            return $payload;
         }
 
         $connectionId = is_string($normalizedEvent['connectionId'] ?? null)
@@ -244,7 +249,10 @@ final class CallControlWebhookHandler
         ]);
 
         try {
-            $this->callControlClient->answer($callControlId, $eventId . '-answer');
+            if ($shouldAnswerIncomingLeg) {
+                $this->callControlClient->answer($callControlId, $eventId . '-answer');
+            }
+
             $this->callControlClient->dial(
                 $callControlId,
                 $this->forwardDestination,
@@ -369,6 +377,16 @@ final class CallControlWebhookHandler
     private function isCallerWhitelisted(string $callerNumber): bool
     {
         return $callerNumber !== '' && isset($this->whitelistedCallers[$callerNumber]);
+    }
+
+    /**
+     * @param array<string, mixed> $normalizedEvent
+     */
+    private function isIncomingLegAlreadyActive(array $normalizedEvent): bool
+    {
+        $state = strtolower(is_string($normalizedEvent['state'] ?? null) ? trim($normalizedEvent['state']) : '');
+
+        return in_array($state, self::INCOMING_ALREADY_ACTIVE_STATES, true);
     }
 
     /**

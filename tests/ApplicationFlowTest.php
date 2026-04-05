@@ -156,6 +156,71 @@ final class ApplicationFlowTest extends AppTestCase
         ], $commands->getArrayCopy());
     }
 
+    public function testCallControlWebhookForBridgingWhitelistedCallerDialsWithoutAnswer(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_TIMEOUT_SECONDS' => '12',
+            'WHITELISTED_CALLERS' => self::CALLER_NUMBER,
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-123-bridging',
+                'event_type' => 'call.initiated',
+                'payload' => [
+                    'call_control_id' => 'call-123-bridging',
+                    'call_session_id' => 'session-123-bridging',
+                    'connection_id' => 'conn-123-bridging',
+                    'direction' => 'incoming',
+                    'state' => 'bridging',
+                    'from' => self::CALLER_NUMBER,
+                    'to' => self::INBOUND_DESTINATION_NUMBER,
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(self::CALL_CONTROL_JSON_CONTENT_TYPE, $response->getHeaderLine('Content-Type'));
+        self::assertStringContainsString('forwarding_started', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'dial',
+                'callControlId' => 'call-123-bridging',
+                'destination' => self::SIP_DESTINATION,
+                'from' => self::INBOUND_DESTINATION_NUMBER,
+                'timeoutSeconds' => 12,
+                'bridgeIntent' => true,
+                'connectionId' => 'conn-123-bridging',
+                'linkTo' => 'call-123-bridging',
+                'bridgeOnAnswer' => true,
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'call-123-bridging',
+                    'inbound_call_session_id' => 'session-123-bridging',
+                    'caller' => self::CALLER_NUMBER,
+                    'flow' => 'direct_forward',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-123-bridging-dial',
+            ],
+        ], $commands->getArrayCopy());
+    }
+
     public function testCallControlWebhookStartsVoicemailForNonWhitelistedCaller(): void
     {
         $commands = new ArrayObject();
@@ -213,6 +278,63 @@ final class ApplicationFlowTest extends AppTestCase
                     'stage' => 'voicemail_prompt',
                 ], JSON_UNESCAPED_SLASHES)),
                 'commandId' => 'evt-456-voicemail-menu',
+            ],
+        ], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookStartsVoicemailForBridgingIncomingCallerWithoutAnswer(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-456-bridging',
+                'event_type' => 'call.initiated',
+                'payload' => [
+                    'call_control_id' => 'call-456-bridging',
+                    'direction' => 'incoming',
+                    'state' => 'bridging',
+                    'from' => self::CALLER_NUMBER,
+                    'to' => self::INBOUND_DESTINATION_NUMBER,
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('voicemail_prompt_started', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'speak',
+                'callControlId' => 'call-456-bridging',
+                'payload' => 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+                'voice' => 'Azure.hu-HU-NoemiNeural',
+                'language' => null,
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'call-456-bridging',
+                    'inbound_call_session_id' => '',
+                    'caller' => self::CALLER_NUMBER,
+                    'flow' => 'voicemail',
+                    'stage' => 'voicemail_prompt',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-456-bridging-voicemail-menu',
             ],
         ], $commands->getArrayCopy());
     }
