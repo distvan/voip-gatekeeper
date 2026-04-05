@@ -7,6 +7,8 @@ use Psr\Http\Message\ResponseInterface as Response;
 
 class CallController
 {
+    private const DEFAULT_TTS_VOICE = 'Azure.hu-HU-NoemiNeural';
+    private const DEFAULT_TTS_LANGUAGE = 'hu-HU';
     private const XML_CONTENT_TYPE = 'application/xml';
     private const VOICEMAIL_MAX_LENGTH_SECONDS = 120;
     private const DESTINATION_TYPE_E164 = 'e164';
@@ -38,8 +40,8 @@ class CallController
         $this->forwardDestination = $forwardDestination;
         $this->enableSipFallbackToVoicemail = $enableSipFallbackToVoicemail;
         $this->sipTimeoutSeconds = $sipTimeoutSeconds;
-        $this->sayVoice = is_string($speechSettings['voice'] ?? null) ? $speechSettings['voice'] : 'alice';
-        $this->sayLanguage = is_string($speechSettings['language'] ?? null) ? $speechSettings['language'] : 'hu-HU';
+        $this->sayVoice = is_string($speechSettings['voice'] ?? null) ? $speechSettings['voice'] : self::DEFAULT_TTS_VOICE;
+        $this->sayLanguage = is_string($speechSettings['language'] ?? null) ? $speechSettings['language'] : self::DEFAULT_TTS_LANGUAGE;
         $this->whitelistedCallers = $whitelistedCallers;
     }
 

@@ -6,6 +6,8 @@ use App\Exceptions\CallControlException;
 
 final class CallControlVoicemailFlow
 {
+    private const DEFAULT_TTS_VOICE = 'Azure.hu-HU-NoemiNeural';
+    private const DEFAULT_TTS_LANGUAGE = 'hu-HU';
     private const VOICEMAIL_MAX_LENGTH_SECONDS = 120;
     private const VOICEMAIL_INITIAL_TIMEOUT_MILLIS = 5000;
     private const VOICEMAIL_PROMPT_STAGE = 'voicemail_prompt';
@@ -16,11 +18,10 @@ final class CallControlVoicemailFlow
     private const REJECT_STAGE = 'reject';
 
     public function __construct(
-        private readonly string $forwardDestinationType,
         private readonly bool $enableSipFallbackToVoicemail,
         private readonly CallControlClientInterface $callControlClient,
-        private readonly string $sayVoice = 'alice',
-        private readonly string $sayLanguage = 'hu-HU'
+        private readonly string $sayVoice = self::DEFAULT_TTS_VOICE,
+        private readonly string $sayLanguage = self::DEFAULT_TTS_LANGUAGE
     ) {
     }
 

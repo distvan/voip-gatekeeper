@@ -18,6 +18,8 @@ use Slim\Factory\AppFactory as SlimAppFactory;
 
 final class ApplicationFactory
 {
+    private const DEFAULT_TTS_VOICE = 'Azure.hu-HU-NoemiNeural';
+    private const DEFAULT_TTS_LANGUAGE = 'hu-HU';
     private const FALLBACK_TO_VOICEMAIL_ENV_KEY = 'CALL_FORWARD_FALLBACK_TO_VOICEMAIL';
     private const LEGACY_FALLBACK_TO_VOICEMAIL_ENV_KEY = 'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL';
     private const FORWARD_TIMEOUT_ENV_KEY = 'CALL_FORWARD_TIMEOUT_SECONDS';
@@ -88,8 +90,8 @@ final class ApplicationFactory
         $callControlClient = self::resolveCallControlClient($configuration);
         $ttsVoice = self::getOptionalString($configuration, 'TELNYX_TTS_VOICE');
         $ttsLanguage = self::getOptionalString($configuration, 'TELNYX_TTS_LANGUAGE');
-        $resolvedTtsVoice = $ttsVoice !== false && $ttsVoice !== '' ? $ttsVoice : 'alice';
-        $resolvedTtsLanguage = $ttsLanguage !== false && $ttsLanguage !== '' ? $ttsLanguage : 'hu-HU';
+        $resolvedTtsVoice = $ttsVoice !== false && $ttsVoice !== '' ? $ttsVoice : self::DEFAULT_TTS_VOICE;
+        $resolvedTtsLanguage = $ttsLanguage !== false && $ttsLanguage !== '' ? $ttsLanguage : self::DEFAULT_TTS_LANGUAGE;
 
         $app = SlimAppFactory::create();
         $app->add(new TelnyxSignatureMiddleware($telnyxPublicKey));
@@ -121,7 +123,6 @@ final class ApplicationFactory
                 $parsedWhitelistedCallers,
                 $callControlClient,
                 $callControlClient === null ? null : new CallControlVoicemailFlow(
-                    $callForwardDestinationType,
                     $enableSipFallbackToVoicemail,
                     $callControlClient,
                     $resolvedTtsVoice,

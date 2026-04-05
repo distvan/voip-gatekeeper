@@ -26,7 +26,8 @@ final class ApplicationFlowTest extends AppTestCase
         self::assertSame(200, $response->getStatusCode());
         self::assertSame('application/xml', $response->getHeaderLine('Content-Type'));
         self::assertStringContainsString('<Gather numDigits="1" action="/gather" timeout="5">', $body);
-        self::assertStringContainsString('voice="alice" language="hu-HU"', $body);
+        self::assertStringContainsString('voice="Azure.hu-HU-NoemiNeural"', $body);
+        self::assertStringNotContainsString('language="hu-HU"', $body);
         self::assertStringContainsString('<Redirect>/reject</Redirect>', $body);
     }
 
@@ -201,8 +202,8 @@ final class ApplicationFlowTest extends AppTestCase
                 'action' => 'speak',
                 'callControlId' => 'call-456',
                 'payload' => 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
-                'voice' => 'alice',
-                'language' => 'hu-HU',
+                'voice' => 'Azure.hu-HU-NoemiNeural',
+                'language' => null,
                 'clientState' => base64_encode(json_encode([
                     'version' => 1,
                     'inbound_call_control_id' => 'call-456',
@@ -351,8 +352,8 @@ final class ApplicationFlowTest extends AppTestCase
                 'action' => 'speak',
                 'callControlId' => 'inbound-leg-2',
                 'payload' => 'A hívott fél jelenleg nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
-                'voice' => 'alice',
-                'language' => 'hu-HU',
+                'voice' => 'Azure.hu-HU-NoemiNeural',
+                'language' => null,
                 'clientState' => base64_encode(json_encode([
                     'version' => 1,
                     'inbound_call_control_id' => 'inbound-leg-2',
@@ -457,8 +458,8 @@ final class ApplicationFlowTest extends AppTestCase
                 'action' => 'speak',
                 'callControlId' => 'inbound-leg-2',
                 'payload' => 'Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.',
-                'voice' => 'alice',
-                'language' => 'hu-HU',
+                'voice' => 'Azure.hu-HU-NoemiNeural',
+                'language' => null,
                 'clientState' => base64_encode(json_encode([
                     'version' => 1,
                     'inbound_call_control_id' => 'inbound-leg-2',
@@ -568,8 +569,8 @@ final class ApplicationFlowTest extends AppTestCase
                 'action' => 'speak',
                 'callControlId' => 'inbound-leg-2',
                 'payload' => 'Köszönöm az üzenetet. Viszonthallásra.',
-                'voice' => 'alice',
-                'language' => 'hu-HU',
+                'voice' => 'Azure.hu-HU-NoemiNeural',
+                'language' => null,
                 'clientState' => base64_encode(json_encode([
                     'version' => 1,
                     'inbound_call_control_id' => 'inbound-leg-2',
@@ -584,6 +585,20 @@ final class ApplicationFlowTest extends AppTestCase
                 'commandId' => 'evt-complete-speak-end-hangup',
             ],
         ], $commands->getArrayCopy());
+    }
+
+    public function testAliceVoiceKeepsLanguageAttribute(): void
+    {
+        $app = $this->createApp([
+            'TELNYX_TTS_VOICE' => 'alice',
+            'TELNYX_TTS_LANGUAGE' => 'hu-HU',
+        ]);
+
+        $request = $this->createSignedRequest('POST', self::INCOMING_CALL_PATH, ['From' => self::CALLER_NUMBER]);
+        $response = $app->handle($request);
+        $body = $this->readBody($response);
+
+        self::assertStringContainsString('voice="alice" language="hu-HU"', $body);
     }
 
     public function testCustomVoiceOmitsLanguageAttribute(): void

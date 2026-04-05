@@ -27,7 +27,7 @@ WHITELISTED_CALLERS
 - `CALL_FORWARD_TIMEOUT_SECONDS`: optional integer between `5` and `120` for both `sip` and `e164` forwarding. This sets the dial ring timeout so fallback to voicemail can start sooner than the provider or carrier default.
 - `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL` and `CALL_FORWARD_SIP_TIMEOUT_SECONDS`: legacy aliases still accepted for backward compatibility.
 - `TELNYX_API_KEY`: optional Telnyx API key used only by the new Call Control webhook path. It is required if you point a Voice API Call Control application at this service.
-- `TELNYX_TTS_VOICE`: optional TTS voice. Default is `alice`. For Hungarian, prefer a provider-specific Hungarian voice rather than `alice`, for example `Azure.hu-HU-NoemiNeural` if that voice is enabled in your Telnyx setup.
+- `TELNYX_TTS_VOICE`: optional TTS voice. Default is `Azure.hu-HU-NoemiNeural` so the voicemail and announcements use a Hungarian voice out of the box. Set it explicitly if your Telnyx account uses a different Hungarian voice or if you want to fall back to `alice`.
 - `TELNYX_TTS_LANGUAGE`: optional language used only when `TELNYX_TTS_VOICE=alice`. Default is `hu-HU`.
 - `WHITELISTED_CALLERS`: optional comma-separated list of caller numbers in E.164 format, for example `+36201234567,+36701234567`. Whitelisted callers are connected directly to the configured forwarding destination without the normal announcement and confirmation flow. All other callers continue through the normal incoming-call flow, where pressing `1` records a voicemail instead of calling you.
 
@@ -142,7 +142,7 @@ docker run --rm -p 8080:8080 \
   voip-gatekeeper
 ```
 
-Example with an explicit Hungarian TTS voice:
+Example with the default Hungarian TTS voice set explicitly:
 
 ```bash
 docker run --rm -p 8080:8080 \
