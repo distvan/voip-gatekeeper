@@ -150,6 +150,7 @@ final class ApplicationFlowTest extends AppTestCase
                     'inbound_call_session_id' => 'session-123',
                     'caller' => self::CALLER_NUMBER,
                     'flow' => 'direct_forward',
+                    'dial_strategy' => 'auto_bridge',
                 ], JSON_UNESCAPED_SLASHES)),
                 'commandId' => 'evt-123-dial',
             ],
@@ -215,8 +216,80 @@ final class ApplicationFlowTest extends AppTestCase
                     'inbound_call_session_id' => 'session-123-bridging',
                     'caller' => self::CALLER_NUMBER,
                     'flow' => 'direct_forward',
+                    'dial_strategy' => 'auto_bridge',
                 ], JSON_UNESCAPED_SLASHES)),
                 'commandId' => 'evt-123-bridging-dial',
+            ],
+        ], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookForWhitelistedCallerWithFallbackUsesAmdManualBridge(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_TIMEOUT_SECONDS' => '12',
+            'WHITELISTED_CALLERS' => self::CALLER_NUMBER,
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-123-amd',
+                'event_type' => 'call.initiated',
+                'payload' => [
+                    'call_control_id' => 'call-123-amd',
+                    'call_session_id' => 'session-123-amd',
+                    'connection_id' => 'conn-123-amd',
+                    'direction' => 'incoming',
+                    'from' => self::CALLER_NUMBER,
+                    'to' => self::INBOUND_DESTINATION_NUMBER,
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('forwarding_started', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'answer',
+                'callControlId' => 'call-123-amd',
+                'commandId' => 'evt-123-amd-answer',
+            ],
+            [
+                'action' => 'dial',
+                'callControlId' => 'call-123-amd',
+                'destination' => self::SIP_DESTINATION,
+                'from' => self::INBOUND_DESTINATION_NUMBER,
+                'timeoutSeconds' => 12,
+                'bridgeIntent' => true,
+                'connectionId' => 'conn-123-amd',
+                'linkTo' => 'call-123-amd',
+                'bridgeOnAnswer' => false,
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'call-123-amd',
+                    'inbound_call_session_id' => 'session-123-amd',
+                    'caller' => self::CALLER_NUMBER,
+                    'flow' => 'direct_forward',
+                    'dial_strategy' => 'manual_bridge',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-123-amd-dial',
+                'answeringMachineDetection' => 'detect',
             ],
         ], $commands->getArrayCopy());
     }
@@ -379,6 +452,177 @@ final class ApplicationFlowTest extends AppTestCase
         self::assertSame(200, $response->getStatusCode());
         self::assertStringContainsString('forwarding_answered', $this->readBody($response));
         self::assertSame([], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookWaitsForMachineDetectionBeforeManualBridge(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-answered-amd',
+                'event_type' => 'call.answered',
+                'payload' => [
+                    'call_control_id' => 'outbound-leg-amd',
+                    'direction' => 'outgoing',
+                    'state' => 'answered',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-amd',
+                        'flow' => 'direct_forward',
+                        'dial_strategy' => 'manual_bridge',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('forwarding_waiting_for_machine_detection', $this->readBody($response));
+        self::assertSame([], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookBridgesHumanAfterMachineDetection(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-machine-human',
+                'event_type' => 'call.machine.detection.ended',
+                'payload' => [
+                    'call_control_id' => 'outbound-leg-human',
+                    'direction' => 'outgoing',
+                    'result' => 'human',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-human',
+                        'flow' => 'direct_forward',
+                        'dial_strategy' => 'manual_bridge',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('forwarding_bridging', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'bridge',
+                'callControlId' => 'inbound-leg-human',
+                'callControlIdToBridgeWith' => 'outbound-leg-human',
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'inbound-leg-human',
+                    'flow' => 'direct_forward',
+                    'dial_strategy' => 'manual_bridge',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-machine-human-bridge',
+            ],
+        ], $commands->getArrayCopy());
+    }
+
+    public function testCallControlWebhookStartsVoicemailAfterMachineDetection(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-machine-machine',
+                'event_type' => 'call.machine.detection.ended',
+                'payload' => [
+                    'call_control_id' => 'outbound-leg-machine',
+                    'direction' => 'outgoing',
+                    'result' => 'machine',
+                    'client_state' => base64_encode(json_encode([
+                        'version' => 1,
+                        'inbound_call_control_id' => 'inbound-leg-machine',
+                        'flow' => 'direct_forward',
+                        'dial_strategy' => 'manual_bridge',
+                    ], JSON_UNESCAPED_SLASHES)),
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('forwarding_machine_detected', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'hangup',
+                'callControlId' => 'outbound-leg-machine',
+                'commandId' => 'evt-machine-machine-outbound-hangup',
+            ],
+            [
+                'action' => 'speak',
+                'callControlId' => 'inbound-leg-machine',
+                'payload' => 'A hívott fél jelenleg nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+                'voice' => 'Azure.hu-HU-NoemiNeural',
+                'language' => null,
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'inbound-leg-machine',
+                    'flow' => 'voicemail',
+                    'dial_strategy' => 'manual_bridge',
+                    'amd_result' => 'machine',
+                    'stage' => 'voicemail_prompt',
+                    'hangup_cause' => 'amd_machine',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-machine-machine-voicemail-menu',
+            ],
+        ], $commands->getArrayCopy());
     }
 
     public function testCallControlWebhookAcceptsCorrelatedHangupWithoutDirection(): void
@@ -877,6 +1121,21 @@ final class ApplicationFlowTest extends AppTestCase
                 ]);
             }
 
+            public function bridge(
+                string $callControlId,
+                string $callControlIdToBridgeWith,
+                ?string $clientState = null,
+                ?string $commandId = null
+            ): void {
+                $this->commands->append([
+                    'action' => 'bridge',
+                    'callControlId' => $callControlId,
+                    'callControlIdToBridgeWith' => $callControlIdToBridgeWith,
+                    'clientState' => $clientState,
+                    'commandId' => $commandId,
+                ]);
+            }
+
             public function speakText(
                 string $callControlId,
                 string $payload,
@@ -961,7 +1220,9 @@ final class ApplicationFlowTest extends AppTestCase
                     'bridgeOnAnswer' => $options->bridgeOnAnswer,
                     'clientState' => $options->clientState,
                     'commandId' => $options->commandId,
-                ]);
+                ] + ($options->answeringMachineDetection !== null ? [
+                    'answeringMachineDetection' => $options->answeringMachineDetection,
+                ] : []));
             }
         };
     }

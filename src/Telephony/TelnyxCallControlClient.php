@@ -26,6 +26,27 @@ final class TelnyxCallControlClient implements CallControlClientInterface
         $this->sendCommand($callControlId, 'answer', $payload);
     }
 
+    public function bridge(
+        string $callControlId,
+        string $callControlIdToBridgeWith,
+        ?string $clientState = null,
+        ?string $commandId = null
+    ): void {
+        $payload = [
+            'call_control_id' => $callControlIdToBridgeWith,
+        ];
+
+        if ($clientState !== null && $clientState !== '') {
+            $payload['client_state'] = $clientState;
+        }
+
+        if ($commandId !== null && $commandId !== '') {
+            $payload['command_id'] = $commandId;
+        }
+
+        $this->sendCommand($callControlId, 'bridge', $payload);
+    }
+
     public function speakText(
         string $callControlId,
         string $payload,
@@ -139,6 +160,18 @@ final class TelnyxCallControlClient implements CallControlClientInterface
 
         if ($options->bridgeOnAnswer) {
             $payload['bridge_on_answer'] = true;
+        }
+
+        if ($options->answeringMachineDetection !== null && $options->answeringMachineDetection !== '') {
+            $payload['answering_machine_detection'] = $options->answeringMachineDetection;
+        }
+
+        if ($options->answeringMachineDetectionConfig !== null) {
+            $amdConfig = $options->answeringMachineDetectionConfig->toArray();
+
+            if ($amdConfig !== []) {
+                $payload['answering_machine_detection_config'] = $amdConfig;
+            }
         }
 
         if ($options->clientState !== null && $options->clientState !== '') {

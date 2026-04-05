@@ -10,6 +10,8 @@ final class CallControlDialOptions
         public readonly ?string $connectionId = null,
         public readonly ?string $linkTo = null,
         public readonly bool $bridgeOnAnswer = false,
+        public readonly ?string $answeringMachineDetection = null,
+        public readonly ?CallControlAnsweringMachineDetectionConfig $answeringMachineDetectionConfig = null,
         public readonly ?string $clientState = null,
         public readonly ?string $commandId = null
     ) {

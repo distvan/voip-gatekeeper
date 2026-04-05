@@ -39,7 +39,10 @@ The repository now also exposes a Call Control webhook endpoint at `/call-contro
 
 This is an initial migration slice intended for direct forwarding flows. When the service receives a `call.initiated` webhook for a whitelisted caller and `TELNYX_API_KEY` is configured, it answers the inbound leg and sends a Telnyx Call Control `dial` command to the configured forwarding destination.
 
-The outbound Call Control dial now carries `link_to`, `bridge_on_answer`, and a correlated `client_state`, so Telnyx can bridge the SIP leg back to the inbound caller as soon as the SIP destination answers instead of relying on the previous parked TeXML behavior.
+The outbound Call Control dial now carries a correlated `client_state` and uses one of two forwarding strategies:
+
+- without voicemail fallback, it keeps the simpler `link_to` plus `bridge_on_answer` behavior so Telnyx bridges as soon as the destination answers
+- with `CALL_FORWARD_FALLBACK_TO_VOICEMAIL=true`, it keeps the legs unbridged, enables Telnyx answering machine detection on the outbound dial, manually bridges only after a `call.machine.detection.ended` result of `human`, and switches the inbound caller to the Hungarian voicemail flow when Telnyx classifies the outbound answer as `machine` or `not_sure`
 
 When forwarding fails and `CALL_FORWARD_FALLBACK_TO_VOICEMAIL=true`, the Call Control path now keeps the inbound leg alive, plays a Hungarian voicemail prompt, gathers `1` for confirmation, starts call recording, and finishes with a spoken thank-you after `call.recording.saved`.
 

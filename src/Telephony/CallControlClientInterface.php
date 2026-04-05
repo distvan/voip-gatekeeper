@@ -6,6 +6,13 @@ interface CallControlClientInterface
 {
     public function answer(string $callControlId, ?string $commandId = null): void;
 
+    public function bridge(
+        string $callControlId,
+        string $callControlIdToBridgeWith,
+        ?string $clientState = null,
+        ?string $commandId = null
+    ): void;
+
     public function speakText(
         string $callControlId,
         string $payload,
