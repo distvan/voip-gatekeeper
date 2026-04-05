@@ -35,7 +35,7 @@ final class CallControlVoicemailFlow
 
         return $this->speakText(
             $callControlId,
-            'A hívott SIP végpont nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+            'A hívott fél jelenleg nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
             $state,
             $eventId . '-voicemail-menu'
         );
@@ -158,7 +158,7 @@ final class CallControlVoicemailFlow
 
     public function shouldStartForFailedDial(): bool
     {
-        return $this->enableSipFallbackToVoicemail && $this->forwardDestinationType === 'sip';
+        return $this->enableSipFallbackToVoicemail;
     }
 
     /**

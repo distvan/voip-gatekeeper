@@ -18,6 +18,11 @@ use Slim\Factory\AppFactory as SlimAppFactory;
 
 final class ApplicationFactory
 {
+    private const FALLBACK_TO_VOICEMAIL_ENV_KEY = 'CALL_FORWARD_FALLBACK_TO_VOICEMAIL';
+    private const LEGACY_FALLBACK_TO_VOICEMAIL_ENV_KEY = 'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL';
+    private const FORWARD_TIMEOUT_ENV_KEY = 'CALL_FORWARD_TIMEOUT_SECONDS';
+    private const LEGACY_FORWARD_TIMEOUT_ENV_KEY = 'CALL_FORWARD_SIP_TIMEOUT_SECONDS';
+
     /**
      * @return array<string, string|false>
      */
@@ -26,8 +31,10 @@ final class ApplicationFactory
         'CALL_FORWARD_DESTINATION_TYPE',
         'CALL_FORWARD_NUMBER',
         'CALL_FORWARD_SIP_URI',
-        'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL',
-        'CALL_FORWARD_SIP_TIMEOUT_SECONDS',
+        self::FALLBACK_TO_VOICEMAIL_ENV_KEY,
+        self::LEGACY_FALLBACK_TO_VOICEMAIL_ENV_KEY,
+        self::FORWARD_TIMEOUT_ENV_KEY,
+        self::LEGACY_FORWARD_TIMEOUT_ENV_KEY,
         'TELNYX_API_KEY',
         'TELNYX_TTS_VOICE',
         'TELNYX_TTS_LANGUAGE',
@@ -58,18 +65,20 @@ final class ApplicationFactory
         }
 
         $enableSipFallbackToVoicemail = self::parseSipFallbackFlag(
-            self::getOptionalString($configuration, 'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL')
+            self::getOptionalStringFromAliases(
+                $configuration,
+                self::FALLBACK_TO_VOICEMAIL_ENV_KEY,
+                self::LEGACY_FALLBACK_TO_VOICEMAIL_ENV_KEY
+            )
         );
-
-        if ($enableSipFallbackToVoicemail && $callForwardDestinationType !== 'sip') {
-            throw new ConfigurationException(
-                'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL can be enabled only when CALL_FORWARD_DESTINATION_TYPE=sip.'
-            );
-        }
 
         $sipTimeoutSeconds = self::parseSipTimeoutSeconds(
             $callForwardDestinationType,
-            self::getOptionalString($configuration, 'CALL_FORWARD_SIP_TIMEOUT_SECONDS')
+            self::getOptionalStringFromAliases(
+                $configuration,
+                self::FORWARD_TIMEOUT_ENV_KEY,
+                self::LEGACY_FORWARD_TIMEOUT_ENV_KEY
+            )
         );
 
         $callForwardDestination = self::resolveForwardDestination($configuration, $callForwardDestinationType);
@@ -163,6 +172,22 @@ final class ApplicationFactory
         return $value;
     }
 
+    /**
+     * @param array<string, mixed> $configuration
+     */
+    private static function getOptionalStringFromAliases(array $configuration, string ...$keys): string|false
+    {
+        foreach ($keys as $key) {
+            $value = self::getOptionalString($configuration, $key);
+
+            if ($value !== false && $value !== '') {
+                return $value;
+            }
+        }
+
+        return false;
+    }
+
     private static function parseSipFallbackFlag(string|false $callForwardSipFallbackToVoicemail): bool
     {
         if ($callForwardSipFallbackToVoicemail === false || $callForwardSipFallbackToVoicemail === '') {
@@ -176,7 +201,7 @@ final class ApplicationFactory
         );
 
         if (!is_bool($enableSipFallbackToVoicemail)) {
-            throw new ConfigurationException('CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL must be a boolean value.');
+            throw new ConfigurationException(self::FALLBACK_TO_VOICEMAIL_ENV_KEY . ' must be a boolean value.');
         }
 
         return $enableSipFallbackToVoicemail;
@@ -190,20 +215,16 @@ final class ApplicationFactory
             return null;
         }
 
-        if ($callForwardDestinationType !== 'sip') {
-            throw new ConfigurationException(
-                'CALL_FORWARD_SIP_TIMEOUT_SECONDS can be configured only when CALL_FORWARD_DESTINATION_TYPE=sip.'
-            );
-        }
+        unset($callForwardDestinationType);
 
         if (!ctype_digit($callForwardSipTimeoutSeconds)) {
-            throw new ConfigurationException('CALL_FORWARD_SIP_TIMEOUT_SECONDS must be an integer number of seconds.');
+            throw new ConfigurationException(self::FORWARD_TIMEOUT_ENV_KEY . ' must be an integer number of seconds.');
         }
 
         $sipTimeoutSeconds = (int) $callForwardSipTimeoutSeconds;
 
         if ($sipTimeoutSeconds < 5 || $sipTimeoutSeconds > 120) {
-            throw new ConfigurationException('CALL_FORWARD_SIP_TIMEOUT_SECONDS must be between 5 and 120 seconds.');
+            throw new ConfigurationException(self::FORWARD_TIMEOUT_ENV_KEY . ' must be between 5 and 120 seconds.');
         }
 
         return $sipTimeoutSeconds;

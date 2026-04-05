@@ -42,14 +42,33 @@ final class ApplicationFlowTest extends AppTestCase
         self::assertStringContainsString('<Number>+36201234567</Number>', $body);
     }
 
+    public function testIncomingCallForWhitelistedCallerDialsConfiguredNumberWithFallback(): void
+    {
+        $app = $this->createApp([
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_TIMEOUT_SECONDS' => '12',
+            'WHITELISTED_CALLERS' => self::CALLER_NUMBER,
+        ]);
+        $request = $this->createSignedRequest('POST', self::INCOMING_CALL_PATH, ['From' => self::CALLER_NUMBER]);
+        $response = $app->handle($request);
+        $body = $this->readBody($response);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertStringContainsString('<Dial', $body);
+        self::assertStringContainsString('action="/dial-fallback"', $body);
+        self::assertStringContainsString('method="POST"', $body);
+        self::assertStringContainsString('timeout="12"', $body);
+        self::assertStringContainsString('<Number>+36201234567</Number>', $body);
+    }
+
     public function testIncomingCallForWhitelistedCallerDialsSipDestinationWithFallback(): void
     {
         $app = $this->createApp([
             'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
             'CALL_FORWARD_NUMBER' => false,
             'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
-            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
-            'CALL_FORWARD_SIP_TIMEOUT_SECONDS' => '12',
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_TIMEOUT_SECONDS' => '12',
             'WHITELISTED_CALLERS' => self::CALLER_NUMBER,
         ]);
 
@@ -75,7 +94,7 @@ final class ApplicationFlowTest extends AppTestCase
             'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
             'CALL_FORWARD_NUMBER' => false,
             'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
-            'CALL_FORWARD_SIP_TIMEOUT_SECONDS' => '12',
+            'CALL_FORWARD_TIMEOUT_SECONDS' => '12',
             'WHITELISTED_CALLERS' => self::CALLER_NUMBER,
             'CALL_CONTROL_CLIENT' => $client,
         ]);
@@ -294,10 +313,7 @@ final class ApplicationFlowTest extends AppTestCase
         $commands = new ArrayObject();
         $client = $this->createFakeCallControlClient($commands);
         $app = $this->createApp([
-            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
-            'CALL_FORWARD_NUMBER' => false,
-            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
-            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
             'CALL_CONTROL_CLIENT' => $client,
         ]);
 
@@ -334,7 +350,7 @@ final class ApplicationFlowTest extends AppTestCase
             [
                 'action' => 'speak',
                 'callControlId' => 'inbound-leg-2',
-                'payload' => 'A hívott SIP végpont nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+                'payload' => 'A hívott fél jelenleg nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
                 'voice' => 'alice',
                 'language' => 'hu-HU',
                 'clientState' => base64_encode(json_encode([
@@ -357,7 +373,7 @@ final class ApplicationFlowTest extends AppTestCase
             'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
             'CALL_FORWARD_NUMBER' => false,
             'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
-            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
             'CALL_CONTROL_CLIENT' => $client,
         ]);
 
@@ -409,7 +425,7 @@ final class ApplicationFlowTest extends AppTestCase
             'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
             'CALL_FORWARD_NUMBER' => false,
             'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
-            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
             'CALL_CONTROL_CLIENT' => $client,
         ]);
 
@@ -462,7 +478,7 @@ final class ApplicationFlowTest extends AppTestCase
             'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
             'CALL_FORWARD_NUMBER' => false,
             'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
-            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
             'CALL_CONTROL_CLIENT' => $client,
         ]);
 
@@ -611,10 +627,7 @@ final class ApplicationFlowTest extends AppTestCase
     public function testDialFallbackStartsVoicemailForNoAnswer(): void
     {
         $app = $this->createApp([
-            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
-            'CALL_FORWARD_NUMBER' => false,
-            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
-            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
         ]);
 
         $request = $this->createSignedRequest('POST', '/dial-fallback', ['DialCallStatus' => 'no-answer']);
@@ -631,7 +644,7 @@ final class ApplicationFlowTest extends AppTestCase
             'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
             'CALL_FORWARD_NUMBER' => false,
             'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
-            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_FALLBACK_TO_VOICEMAIL' => 'true',
         ]);
 
         $request = $this->createSignedRequest('POST', '/dial-fallback', ['DialCallStatus' => 'completed']);

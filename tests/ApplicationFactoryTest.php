@@ -52,10 +52,23 @@ final class ApplicationFactoryTest extends AppTestCase
             'WHITELISTED_CALLERS must contain only valid E.164 phone numbers separated by commas.',
         ];
 
-        yield 'sip fallback not allowed in e164 mode' => [
-            ['CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true'],
-            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL can be enabled only when CALL_FORWARD_DESTINATION_TYPE=sip.',
+        yield 'invalid fallback timeout' => [
+            ['CALL_FORWARD_TIMEOUT_SECONDS' => 'fast'],
+            'CALL_FORWARD_TIMEOUT_SECONDS must be an integer number of seconds.',
         ];
+    }
+
+    public function testCreateAcceptsLegacyFallbackAliases(): void
+    {
+        $app = $this->createApp([
+            'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL' => 'true',
+            'CALL_FORWARD_SIP_TIMEOUT_SECONDS' => '12',
+            'WHITELISTED_CALLERS' => '+36301234567',
+        ]);
+
+        $response = $app->handle($this->createUnsignedRequest('GET', '/health'));
+
+        self::assertSame(200, $response->getStatusCode());
     }
 
     public function testCreateFromEnvironmentBuildsApp(): void
@@ -64,7 +77,9 @@ final class ApplicationFactoryTest extends AppTestCase
         putenv('CALL_FORWARD_DESTINATION_TYPE=e164');
         putenv('CALL_FORWARD_NUMBER=+36201234567');
         putenv('CALL_FORWARD_SIP_URI');
+        putenv('CALL_FORWARD_FALLBACK_TO_VOICEMAIL');
         putenv('CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL');
+        putenv('CALL_FORWARD_TIMEOUT_SECONDS');
         putenv('CALL_FORWARD_SIP_TIMEOUT_SECONDS');
         putenv('TELNYX_API_KEY');
         putenv('TELNYX_TTS_VOICE');

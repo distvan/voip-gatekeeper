@@ -94,11 +94,10 @@ class CallController
     {
         $escapedDestination = htmlspecialchars($this->forwardDestination, ENT_QUOTES | ENT_XML1, 'UTF-8');
         $escapedCallerNumber = htmlspecialchars($callerNumber, ENT_QUOTES | ENT_XML1, 'UTF-8');
+        $dialFallbackAttributes = $this->enableSipFallbackToVoicemail ? ' action="/dial-fallback" method="POST"' : '';
+        $dialTimeoutAttribute = $this->sipTimeoutSeconds !== null ? ' timeout="' . (string) $this->sipTimeoutSeconds . '"' : '';
 
         if ($this->forwardDestinationType === self::DESTINATION_TYPE_SIP) {
-            $dialFallbackAttributes = $this->enableSipFallbackToVoicemail ? ' action="/dial-fallback" method="POST"' : '';
-            $dialTimeoutAttribute = $this->sipTimeoutSeconds !== null ? ' timeout="' . (string) $this->sipTimeoutSeconds . '"' : '';
-
             return <<<XML
             <Response>
                 <Dial{$dialFallbackAttributes}{$dialTimeoutAttribute} answerOnBridge="true" callerId="{$escapedCallerNumber}" record="record-from-answer">
@@ -114,7 +113,7 @@ class CallController
 
         return <<<XML
             <Response>
-                <Dial callerId="{$escapedCallerNumber}" record="record-from-answer">
+                <Dial{$dialFallbackAttributes}{$dialTimeoutAttribute} callerId="{$escapedCallerNumber}" record="record-from-answer">
                     <Number>{$escapedDestination}</Number>
                 </Dial>
             </Response>
