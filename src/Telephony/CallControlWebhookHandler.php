@@ -34,6 +34,7 @@ final class CallControlWebhookHandler
     /** @var array<string, bool> */
     private array $whitelistedCallers;
     private ?CallControlClientInterface $callControlClient;
+    private ?string $outboundSipConnectionId;
     private ?CallControlVoicemailFlow $voicemailFlow;
     private CallControlContextSupport $contextSupport;
 
@@ -46,6 +47,7 @@ final class CallControlWebhookHandler
         ?int $sipTimeoutSeconds,
         array $whitelistedCallers,
         ?CallControlClientInterface $callControlClient,
+        ?string $outboundSipConnectionId = null,
         ?CallControlVoicemailFlow $voicemailFlow = null,
         ?CallControlContextSupport $contextSupport = null
     ) {
@@ -54,6 +56,7 @@ final class CallControlWebhookHandler
         $this->sipTimeoutSeconds = $sipTimeoutSeconds;
         $this->whitelistedCallers = $whitelistedCallers;
         $this->callControlClient = $callControlClient;
+        $this->outboundSipConnectionId = $outboundSipConnectionId;
         $this->voicemailFlow = $voicemailFlow;
         $this->contextSupport = $contextSupport ?? new CallControlContextSupport();
     }
@@ -251,9 +254,7 @@ final class CallControlWebhookHandler
             return $payload;
         }
 
-        $connectionId = is_string($normalizedEvent['connectionId'] ?? null)
-            ? $normalizedEvent['connectionId']
-            : '';
+        $connectionId = $this->resolveOutboundConnectionId($normalizedEvent);
         $fromAddress = $this->getOutboundFromAddress(
             ['to' => $normalizedEvent['to'] ?? null],
             $callerNumber
@@ -326,6 +327,20 @@ final class CallControlWebhookHandler
             'status' => 'forwarding_answered',
             'inbound_call_control_id' => $clientState['inbound_call_control_id'] ?? '',
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $normalizedEvent
+     */
+    private function resolveOutboundConnectionId(array $normalizedEvent): ?string
+    {
+        if ($this->forwardDestinationType === 'sip' && $this->outboundSipConnectionId !== null && $this->outboundSipConnectionId !== '') {
+            return $this->outboundSipConnectionId;
+        }
+
+        $connectionId = $normalizedEvent['connectionId'] ?? null;
+
+        return is_string($connectionId) && $connectionId !== '' ? $connectionId : null;
     }
 
     /**

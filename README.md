@@ -13,6 +13,7 @@ CALL_FORWARD_NUMBER
 CALL_FORWARD_SIP_URI
 CALL_FORWARD_FALLBACK_TO_VOICEMAIL
 CALL_FORWARD_TIMEOUT_SECONDS
+TELNYX_OUTBOUND_SIP_CONNECTION_ID
 TELNYX_API_KEY
 TELNYX_TTS_VOICE
 TELNYX_TTS_LANGUAGE
@@ -26,6 +27,7 @@ WHITELISTED_CALLERS
 - `CALL_FORWARD_FALLBACK_TO_VOICEMAIL`: optional boolean for both `sip` and `e164` forwarding. When `true`, unanswered or failed forwarded calls are sent to the application's Hungarian voicemail flow instead of falling through to the destination's default voicemail.
 - `CALL_FORWARD_TIMEOUT_SECONDS`: optional integer between `5` and `120` for both `sip` and `e164` forwarding. This sets the dial ring timeout so fallback to voicemail can start sooner than the provider or carrier default.
 - `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL` and `CALL_FORWARD_SIP_TIMEOUT_SECONDS`: legacy aliases still accepted for backward compatibility.
+- `TELNYX_OUTBOUND_SIP_CONNECTION_ID`: optional but recommended when `CALL_FORWARD_DESTINATION_TYPE=sip` and you use the Call Control webhook path. Set this to the SIP Connection ID that should originate the outbound SIP dial, instead of reusing the inbound Voice API application's `connection_id`.
 - `TELNYX_API_KEY`: optional Telnyx API key used only by the new Call Control webhook path. It is required if you point a Voice API Call Control application at this service.
 - `TELNYX_TTS_VOICE`: optional TTS voice. Default is `Azure.hu-HU-NoemiNeural` so the voicemail and announcements use a Hungarian voice out of the box. Set it explicitly if your Telnyx account uses a different Hungarian voice or if you want to fall back to `alice`.
 - `TELNYX_TTS_LANGUAGE`: optional language used only when `TELNYX_TTS_VOICE=alice`. Default is `hu-HU`.

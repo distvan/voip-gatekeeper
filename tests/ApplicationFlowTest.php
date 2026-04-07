@@ -157,6 +157,77 @@ final class ApplicationFlowTest extends AppTestCase
         ], $commands->getArrayCopy());
     }
 
+    public function testCallControlWebhookForWhitelistedCallerUsesConfiguredOutboundSipConnection(): void
+    {
+        $commands = new ArrayObject();
+        $client = $this->createFakeCallControlClient($commands);
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => self::SIP_DESTINATION,
+            'CALL_FORWARD_TIMEOUT_SECONDS' => '12',
+            'TELNYX_OUTBOUND_SIP_CONNECTION_ID' => 'sip-conn-123',
+            'WHITELISTED_CALLERS' => self::CALLER_NUMBER,
+            'CALL_CONTROL_CLIENT' => $client,
+        ]);
+
+        $payload = json_encode([
+            'data' => [
+                'id' => 'evt-123-explicit-conn',
+                'event_type' => 'call.initiated',
+                'payload' => [
+                    'call_control_id' => 'call-123-explicit-conn',
+                    'call_session_id' => 'session-123-explicit-conn',
+                    'connection_id' => 'voice-app-conn',
+                    'direction' => 'incoming',
+                    'from' => self::CALLER_NUMBER,
+                    'to' => self::INBOUND_DESTINATION_NUMBER,
+                ],
+            ],
+        ], JSON_UNESCAPED_SLASHES);
+
+        $request = $this->createSignedRequest(
+            'POST',
+            self::CALL_CONTROL_WEBHOOK_PATH,
+            [],
+            ['content-type' => self::CALL_CONTROL_JSON_CONTENT_TYPE],
+            null,
+            $payload === false ? '{}' : $payload
+        );
+        $response = $app->handle($request);
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(self::CALL_CONTROL_JSON_CONTENT_TYPE, $response->getHeaderLine('Content-Type'));
+        self::assertStringContainsString('forwarding_started', $this->readBody($response));
+        self::assertSame([
+            [
+                'action' => 'answer',
+                'callControlId' => 'call-123-explicit-conn',
+                'commandId' => 'evt-123-explicit-conn-answer',
+            ],
+            [
+                'action' => 'dial',
+                'callControlId' => 'call-123-explicit-conn',
+                'destination' => self::SIP_DESTINATION,
+                'from' => self::INBOUND_DESTINATION_NUMBER,
+                'timeoutSeconds' => 12,
+                'bridgeIntent' => true,
+                'connectionId' => 'sip-conn-123',
+                'linkTo' => 'call-123-explicit-conn',
+                'bridgeOnAnswer' => true,
+                'clientState' => base64_encode(json_encode([
+                    'version' => 1,
+                    'inbound_call_control_id' => 'call-123-explicit-conn',
+                    'inbound_call_session_id' => 'session-123-explicit-conn',
+                    'caller' => self::CALLER_NUMBER,
+                    'flow' => 'direct_forward',
+                    'dial_strategy' => 'auto_bridge',
+                ], JSON_UNESCAPED_SLASHES)),
+                'commandId' => 'evt-123-explicit-conn-dial',
+            ],
+        ], $commands->getArrayCopy());
+    }
+
     public function testCallControlWebhookForBridgingWhitelistedCallerDialsWithoutAnswer(): void
     {
         $commands = new ArrayObject();

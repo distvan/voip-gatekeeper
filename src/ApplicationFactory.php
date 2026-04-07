@@ -24,6 +24,7 @@ final class ApplicationFactory
     private const LEGACY_FALLBACK_TO_VOICEMAIL_ENV_KEY = 'CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL';
     private const FORWARD_TIMEOUT_ENV_KEY = 'CALL_FORWARD_TIMEOUT_SECONDS';
     private const LEGACY_FORWARD_TIMEOUT_ENV_KEY = 'CALL_FORWARD_SIP_TIMEOUT_SECONDS';
+    private const OUTBOUND_SIP_CONNECTION_ID_ENV_KEY = 'TELNYX_OUTBOUND_SIP_CONNECTION_ID';
 
     /**
      * @return array<string, string|false>
@@ -37,6 +38,7 @@ final class ApplicationFactory
         self::LEGACY_FALLBACK_TO_VOICEMAIL_ENV_KEY,
         self::FORWARD_TIMEOUT_ENV_KEY,
         self::LEGACY_FORWARD_TIMEOUT_ENV_KEY,
+        self::OUTBOUND_SIP_CONNECTION_ID_ENV_KEY,
         'TELNYX_API_KEY',
         'TELNYX_TTS_VOICE',
         'TELNYX_TTS_LANGUAGE',
@@ -88,6 +90,7 @@ final class ApplicationFactory
             self::getOptionalString($configuration, 'WHITELISTED_CALLERS')
         );
         $callControlClient = self::resolveCallControlClient($configuration);
+        $outboundSipConnectionId = self::getOptionalString($configuration, self::OUTBOUND_SIP_CONNECTION_ID_ENV_KEY);
         $ttsVoice = self::getOptionalString($configuration, 'TELNYX_TTS_VOICE');
         $ttsLanguage = self::getOptionalString($configuration, 'TELNYX_TTS_LANGUAGE');
         $resolvedTtsVoice = $ttsVoice !== false && $ttsVoice !== '' ? $ttsVoice : self::DEFAULT_TTS_VOICE;
@@ -122,6 +125,7 @@ final class ApplicationFactory
                 $sipTimeoutSeconds,
                 $parsedWhitelistedCallers,
                 $callControlClient,
+                $outboundSipConnectionId !== false && $outboundSipConnectionId !== '' ? $outboundSipConnectionId : null,
                 $callControlClient === null ? null : new CallControlVoicemailFlow(
                     $enableSipFallbackToVoicemail,
                     $callControlClient,
