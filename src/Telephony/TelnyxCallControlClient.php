@@ -230,7 +230,10 @@ final class TelnyxCallControlClient implements CallControlClientInterface
         $statusCode = curl_getinfo($handle, CURLINFO_HTTP_CODE);
 
         if ($response === false || $statusCode < 200 || $statusCode >= 300) {
-            $errorMessage = $response === false ? curl_error($handle) : 'Unexpected Telnyx API status ' . $statusCode;
+            $responseBody = is_string($response) ? $response : '';
+            $errorMessage = $response === false
+                ? curl_error($handle)
+                : $this->formatHttpError($url, $statusCode, $responseBody);
             curl_close($handle);
 
             throw new CallControlException('Call Control command failed: ' . $errorMessage);
@@ -261,7 +264,25 @@ final class TelnyxCallControlClient implements CallControlClientInterface
         $statusCode = preg_match('/\s(\d{3})\s/', $statusLine, $matches) === 1 ? (int) $matches[1] : 0;
 
         if ($result === false || $statusCode < 200 || $statusCode >= 300) {
-            throw new CallControlException('Call Control command failed with status ' . $statusCode . '.');
+            throw new CallControlException(
+                'Call Control command failed: ' . $this->formatHttpError($url, $statusCode, is_string($result) ? $result : '')
+            );
         }
+    }
+
+    private function formatHttpError(string $url, int $statusCode, string $responseBody): string
+    {
+        $message = 'Unexpected Telnyx API status ' . $statusCode . ' for ' . $url;
+        $responseBody = trim($responseBody);
+
+        if ($responseBody === '') {
+            return $message;
+        }
+
+        if (strlen($responseBody) > 1000) {
+            $responseBody = substr($responseBody, 0, 1000) . '...';
+        }
+
+        return $message . ' with response: ' . $responseBody;
     }
 }
