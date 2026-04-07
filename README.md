@@ -44,7 +44,7 @@ The outbound Call Control dial now carries a correlated `client_state` and uses 
 - without voicemail fallback, it keeps the simpler `link_to` plus `bridge_on_answer` behavior so Telnyx bridges as soon as the destination answers
 - with `CALL_FORWARD_FALLBACK_TO_VOICEMAIL=true`, it keeps the legs unbridged, enables Telnyx answering machine detection on the outbound dial, manually bridges only after a `call.machine.detection.ended` result of `human`, and switches the inbound caller to the Hungarian voicemail flow when Telnyx classifies the outbound answer as `machine` or `not_sure`
 
-When forwarding fails and `CALL_FORWARD_FALLBACK_TO_VOICEMAIL=true`, the Call Control path now keeps the inbound leg alive, plays a Hungarian voicemail prompt, gathers `1` for confirmation, starts call recording, and finishes with a spoken thank-you after `call.recording.saved`.
+When forwarding fails and `CALL_FORWARD_FALLBACK_TO_VOICEMAIL=true`, the Call Control path now keeps the inbound leg alive, plays a Hungarian voicemail prompt, starts recording on `call.speak.ended`, and finishes with a spoken thank-you after `call.recording.saved`.
 
 For incoming `call.initiated` webhooks, the Call Control path now treats `state=bridging` as an already-active inbound leg. In that case it skips the `answer` command and starts direct forwarding or the voicemail prompt immediately, which avoids the invalid-answer rejection previously seen from Telnyx.
 

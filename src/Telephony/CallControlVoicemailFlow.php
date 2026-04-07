@@ -8,15 +8,12 @@ final class CallControlVoicemailFlow
 {
     private const DEFAULT_TTS_VOICE = 'Azure.hu-HU-NoemiNeural';
     private const DEFAULT_TTS_LANGUAGE = 'hu-HU';
-    private const VOICEMAIL_INCOMING_PROMPT = 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Az egyes gomb megnyomásával hangüzenetet hagyhat.';
+    private const VOICEMAIL_PROMPT = 'A hívott fél jelenleg nem érhető el. Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.';
+    private const VOICEMAIL_INCOMING_PROMPT = 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.';
     private const VOICEMAIL_MAX_LENGTH_SECONDS = 120;
-    private const VOICEMAIL_INITIAL_TIMEOUT_MILLIS = 5000;
     private const VOICEMAIL_PROMPT_STAGE = 'voicemail_prompt';
-    private const VOICEMAIL_GATHER_STAGE = 'voicemail_gather';
-    private const VOICEMAIL_RECORDING_PROMPT_STAGE = 'voicemail_recording_prompt';
     private const VOICEMAIL_RECORDING_STAGE = 'voicemail_recording';
     private const VOICEMAIL_COMPLETE_STAGE = 'voicemail_complete';
-    private const REJECT_STAGE = 'reject';
 
     public function __construct(
         private readonly bool $enableSipFallbackToVoicemail,
@@ -37,7 +34,7 @@ final class CallControlVoicemailFlow
 
         return $this->speakText(
             $callControlId,
-            'A hívott fél jelenleg nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+            self::VOICEMAIL_PROMPT,
             $state,
             $eventId . '-voicemail-menu'
         );
@@ -84,10 +81,8 @@ final class CallControlVoicemailFlow
             $eventId = (string) (($normalizedEvent['eventId'] ?? '') ?: $callControlId);
 
             if ($stage === self::VOICEMAIL_PROMPT_STAGE) {
-                $payload = $this->startVoicemailGather($callControlId, $clientState, $eventId);
-            } elseif ($stage === self::VOICEMAIL_RECORDING_PROMPT_STAGE) {
                 $payload = $this->startVoicemailRecording($callControlId, $clientState, $eventId);
-            } elseif ($stage === self::VOICEMAIL_COMPLETE_STAGE || $stage === self::REJECT_STAGE) {
+            } elseif ($stage === self::VOICEMAIL_COMPLETE_STAGE) {
                 $payload = $this->hangupCall($callControlId, $eventId . '-hangup');
             } else {
                 $payload = ['status' => 'ignored', 'reason' => 'Speak ended event stage is not handled'];
@@ -103,39 +98,9 @@ final class CallControlVoicemailFlow
      */
     public function handleGatherEndedEvent(array $normalizedEvent): array
     {
-        $clientState = $normalizedEvent['clientState'] ?? null;
-        $payload = ['status' => 'ignored', 'reason' => 'Gather ended event is missing correlation state'];
+        unset($normalizedEvent);
 
-        if (is_array($clientState)) {
-            $stage = is_string($clientState['stage'] ?? null) ? $clientState['stage'] : '';
-
-            if ($stage !== self::VOICEMAIL_GATHER_STAGE) {
-                $payload = ['status' => 'ignored', 'reason' => 'Gather ended event stage is not handled'];
-            } else {
-                $callControlId = (string) ($normalizedEvent['callControlId'] ?? '');
-                $eventId = (string) (($normalizedEvent['eventId'] ?? '') ?: $callControlId);
-                $digits = (string) ($normalizedEvent['digits'] ?? '');
-                $gatherStatus = strtolower((string) ($normalizedEvent['gatherStatus'] ?? ''));
-
-                if ($digits === '1' && ($gatherStatus === 'valid' || $gatherStatus === '')) {
-                    $payload = $this->speakText(
-                        $callControlId,
-                        'Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.',
-                        $this->withStage($clientState, self::VOICEMAIL_RECORDING_PROMPT_STAGE),
-                        $eventId . '-recording-prompt'
-                    );
-                } else {
-                    $payload = $this->speakText(
-                        $callControlId,
-                        'Nem történt megerősítés. Viszonthallásra.',
-                        $this->withStage($clientState, self::REJECT_STAGE),
-                        $eventId . '-reject'
-                    );
-                }
-            }
-        }
-
-        return $payload;
+        return ['status' => 'ignored', 'reason' => 'Gather ended events are not used by the voicemail flow'];
     }
 
     /**
@@ -167,30 +132,6 @@ final class CallControlVoicemailFlow
     public function shouldStartForFailedDial(): bool
     {
         return $this->enableSipFallbackToVoicemail;
-    }
-
-    /**
-     * @param array<string, mixed> $clientState
-     * @return array<string, mixed>
-     */
-    private function startVoicemailGather(string $callControlId, array $clientState, string $eventId): array
-    {
-        $state = $this->withStage($clientState, self::VOICEMAIL_GATHER_STAGE);
-
-        try {
-            $this->callControlClient->gather(
-                $callControlId,
-                '1',
-                $this->encodeClientState($state),
-                $eventId . '-gather',
-                1,
-                self::VOICEMAIL_INITIAL_TIMEOUT_MILLIS
-            );
-        } catch (CallControlException $exception) {
-            return ['status' => 'error', 'reason' => $exception->getMessage()];
-        }
-
-        return ['status' => 'voicemail_gather_started'];
     }
 
     /**

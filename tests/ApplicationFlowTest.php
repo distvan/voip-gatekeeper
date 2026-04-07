@@ -339,7 +339,7 @@ final class ApplicationFlowTest extends AppTestCase
             [
                 'action' => 'speak',
                 'callControlId' => 'call-456',
-                'payload' => 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+                'payload' => 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.',
                 'voice' => 'Azure.hu-HU-NoemiNeural',
                 'language' => null,
                 'clientState' => base64_encode(json_encode([
@@ -396,7 +396,7 @@ final class ApplicationFlowTest extends AppTestCase
             [
                 'action' => 'speak',
                 'callControlId' => 'call-456-bridging',
-                'payload' => 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+                'payload' => 'Nyilatkozom, hogy marketing és reklám célú hívásokat nem fogadok. Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.',
                 'voice' => 'Azure.hu-HU-NoemiNeural',
                 'language' => null,
                 'clientState' => base64_encode(json_encode([
@@ -608,7 +608,7 @@ final class ApplicationFlowTest extends AppTestCase
             [
                 'action' => 'speak',
                 'callControlId' => 'inbound-leg-machine',
-                'payload' => 'A hívott fél jelenleg nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+                'payload' => 'A hívott fél jelenleg nem érhető el. Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.',
                 'voice' => 'Azure.hu-HU-NoemiNeural',
                 'language' => null,
                 'clientState' => base64_encode(json_encode([
@@ -717,7 +717,7 @@ final class ApplicationFlowTest extends AppTestCase
             [
                 'action' => 'speak',
                 'callControlId' => 'inbound-leg-2',
-                'payload' => 'A hívott fél jelenleg nem érhető el. Az egyes gomb megnyomásával hangüzenetet hagyhat.',
+                'payload' => 'A hívott fél jelenleg nem érhető el. Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.',
                 'voice' => 'Azure.hu-HU-NoemiNeural',
                 'language' => null,
                 'clientState' => base64_encode(json_encode([
@@ -732,7 +732,7 @@ final class ApplicationFlowTest extends AppTestCase
         ], $commands->getArrayCopy());
     }
 
-    public function testCallControlWebhookStartsGatherAfterVoicemailPromptEnds(): void
+    public function testCallControlWebhookStartsRecordingAfterVoicemailPromptEnds(): void
     {
         $commands = new ArrayObject();
         $client = $this->createFakeCallControlClient($commands);
@@ -765,26 +765,28 @@ final class ApplicationFlowTest extends AppTestCase
         $response = $app->handle($request);
 
         self::assertSame(200, $response->getStatusCode());
-        self::assertStringContainsString('voicemail_gather_started', $this->readBody($response));
+        self::assertStringContainsString('voicemail_recording_started', $this->readBody($response));
         self::assertSame([
             [
-                'action' => 'gather',
+                'action' => 'record-start',
                 'callControlId' => 'inbound-leg-2',
-                'validDigits' => '1',
+                'format' => 'mp3',
+                'channels' => 'single',
                 'clientState' => base64_encode(json_encode([
                     'version' => 1,
                     'inbound_call_control_id' => 'inbound-leg-2',
                     'flow' => 'voicemail',
-                    'stage' => 'voicemail_gather',
+                    'stage' => 'voicemail_recording',
                 ], JSON_UNESCAPED_SLASHES)),
-                'commandId' => 'evt-speak-end-gather',
-                'maximumDigits' => 1,
-                'initialTimeoutMillis' => 5000,
+                'commandId' => 'evt-speak-end-record-start',
+                'playBeep' => true,
+                'maxLength' => 120,
+                'timeoutSeconds' => 5,
             ],
         ], $commands->getArrayCopy());
     }
 
-    public function testCallControlWebhookStartsRecordingAfterVoicemailGatherConfirms(): void
+    public function testCallControlWebhookIgnoresGatherEndedForVoicemailFlow(): void
     {
         $commands = new ArrayObject();
         $client = $this->createFakeCallControlClient($commands);
@@ -818,23 +820,8 @@ final class ApplicationFlowTest extends AppTestCase
         $response = $app->handle($request);
 
         self::assertSame(200, $response->getStatusCode());
-        self::assertStringContainsString('voicemail_prompt_started', $this->readBody($response));
-        self::assertSame([
-            [
-                'action' => 'speak',
-                'callControlId' => 'inbound-leg-2',
-                'payload' => 'Hagyjon hangüzenetet a sípszó után. A rögzítés néhány másodperc csend után automatikusan befejeződik.',
-                'voice' => 'Azure.hu-HU-NoemiNeural',
-                'language' => null,
-                'clientState' => base64_encode(json_encode([
-                    'version' => 1,
-                    'inbound_call_control_id' => 'inbound-leg-2',
-                    'flow' => 'voicemail',
-                    'stage' => 'voicemail_recording_prompt',
-                ], JSON_UNESCAPED_SLASHES)),
-                'commandId' => 'evt-gather-end-recording-prompt',
-            ],
-        ], $commands->getArrayCopy());
+        self::assertStringContainsString('Gather ended events are not used by the voicemail flow', $this->readBody($response));
+        self::assertSame([], $commands->getArrayCopy());
     }
 
     public function testCallControlWebhookSavesVoicemailAndCompletesCall(): void
@@ -860,7 +847,7 @@ final class ApplicationFlowTest extends AppTestCase
                         'version' => 1,
                         'inbound_call_control_id' => 'inbound-leg-2',
                         'flow' => 'voicemail',
-                        'stage' => 'voicemail_recording_prompt',
+                        'stage' => 'voicemail_prompt',
                     ], JSON_UNESCAPED_SLASHES)),
                 ],
             ],
