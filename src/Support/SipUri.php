@@ -6,7 +6,7 @@ final class SipUri
 {
     public static function isValid(string $sipUri): bool
     {
-        $uriWithoutScheme = str_starts_with($sipUri, 'sip:') ? substr($sipUri, 4) : false;
+        $uriWithoutScheme = self::stripScheme($sipUri);
         $host = false;
 
         if (is_string($uriWithoutScheme) && $uriWithoutScheme !== '') {
@@ -19,5 +19,18 @@ final class SipUri
         }
 
         return is_string($host) && $host !== '' && preg_match('/^[A-Za-z0-9.-]+$/', $host) === 1;
+    }
+
+    private static function stripScheme(string $sipUri): string|false
+    {
+        if (str_starts_with($sipUri, 'sip:')) {
+            return substr($sipUri, 4);
+        }
+
+        if (str_starts_with($sipUri, 'sips:')) {
+            return substr($sipUri, 5);
+        }
+
+        return false;
     }
 }

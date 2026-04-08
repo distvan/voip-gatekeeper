@@ -71,6 +71,19 @@ final class ApplicationFactoryTest extends AppTestCase
         self::assertSame(200, $response->getStatusCode());
     }
 
+    public function testCreateAcceptsSecureSipUriDestination(): void
+    {
+        $app = $this->createApp([
+            'CALL_FORWARD_DESTINATION_TYPE' => 'sip',
+            'CALL_FORWARD_NUMBER' => false,
+            'CALL_FORWARD_SIP_URI' => 'sips:userinfo54018@sip.telnyx.com',
+        ]);
+
+        $response = $app->handle($this->createUnsignedRequest('GET', '/health'));
+
+        self::assertSame(200, $response->getStatusCode());
+    }
+
     public function testCreateFromEnvironmentBuildsApp(): void
     {
         putenv('TELNYX_PUBLIC_KEY_BASE64=' . $this->publicKeyBase64);

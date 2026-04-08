@@ -23,7 +23,7 @@ WHITELISTED_CALLERS
 - `TELNYX_PUBLIC_KEY_BASE64`: base64-encoded Telnyx webhook public key for the environment
 - `CALL_FORWARD_DESTINATION_TYPE`: required forwarding mode, either `e164` or `sip`
 - `CALL_FORWARD_NUMBER`: destination phone number in E.164 format, required only when `CALL_FORWARD_DESTINATION_TYPE=e164`, for example `+3620XXXXXXX`
-- `CALL_FORWARD_SIP_URI`: destination SIP URI, required only when `CALL_FORWARD_DESTINATION_TYPE=sip`, for example `sip:your-user@pbx.example.com`
+- `CALL_FORWARD_SIP_URI`: destination SIP URI, required only when `CALL_FORWARD_DESTINATION_TYPE=sip`, for example `sip:your-user@pbx.example.com` or `sips:your-user@sip.telnyx.com`
 - `CALL_FORWARD_FALLBACK_TO_VOICEMAIL`: optional boolean for both `sip` and `e164` forwarding. When `true`, unanswered or failed forwarded calls are sent to the application's Hungarian voicemail flow instead of falling through to the destination's default voicemail.
 - `CALL_FORWARD_TIMEOUT_SECONDS`: optional integer between `5` and `120` for both `sip` and `e164` forwarding. This sets the dial ring timeout so fallback to voicemail can start sooner than the provider or carrier default.
 - `CALL_FORWARD_SIP_FALLBACK_TO_VOICEMAIL` and `CALL_FORWARD_SIP_TIMEOUT_SECONDS`: legacy aliases still accepted for backward compatibility.
