@@ -39,7 +39,7 @@ For your original use case, `sip` mode is the recommended way to ring a softphon
 
 The repository now also exposes a Call Control webhook endpoint at `/call-control/incoming`.
 
-This is an initial migration slice intended for direct forwarding flows. When the service receives a `call.initiated` webhook for a whitelisted caller and `TELNYX_API_KEY` is configured, it answers the inbound leg and sends a Telnyx Call Control `dial` command to the configured forwarding destination.
+This is an initial migration slice intended for direct forwarding flows. When the service receives a `call.initiated` webhook for a whitelisted caller and `TELNYX_API_KEY` is configured, it keeps the inbound SIP leg parked and sends a Telnyx Call Control `dial` command to the configured forwarding destination.
 
 The outbound Call Control dial now carries a correlated `client_state` and uses one of two forwarding strategies:
 

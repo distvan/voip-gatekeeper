@@ -87,7 +87,7 @@ final class ApplicationFlowTest extends AppTestCase
         self::assertStringContainsString('<Sip>' . self::SIP_DESTINATION . '</Sip>', $body);
     }
 
-    public function testCallControlWebhookForWhitelistedCallerAnswersAndDialsSipDestination(): void
+    public function testCallControlWebhookForWhitelistedCallerDialsSipDestinationWithoutAnsweringInboundLeg(): void
     {
         $commands = new ArrayObject();
         $client = $this->createFakeCallControlClient($commands);
@@ -129,11 +129,6 @@ final class ApplicationFlowTest extends AppTestCase
         self::assertSame(self::CALL_CONTROL_JSON_CONTENT_TYPE, $response->getHeaderLine('Content-Type'));
         self::assertStringContainsString('forwarding_started', $this->readBody($response));
         self::assertSame([
-            [
-                'action' => 'answer',
-                'callControlId' => 'call-123',
-                'commandId' => 'evt-123-answer',
-            ],
             [
                 'action' => 'dial',
                 'callControlId' => 'call-123',
@@ -200,11 +195,6 @@ final class ApplicationFlowTest extends AppTestCase
         self::assertSame(self::CALL_CONTROL_JSON_CONTENT_TYPE, $response->getHeaderLine('Content-Type'));
         self::assertStringContainsString('forwarding_started', $this->readBody($response));
         self::assertSame([
-            [
-                'action' => 'answer',
-                'callControlId' => 'call-123-explicit-conn',
-                'commandId' => 'evt-123-explicit-conn-answer',
-            ],
             [
                 'action' => 'dial',
                 'callControlId' => 'call-123-explicit-conn',
@@ -336,11 +326,6 @@ final class ApplicationFlowTest extends AppTestCase
         self::assertSame(200, $response->getStatusCode());
         self::assertStringContainsString('forwarding_started', $this->readBody($response));
         self::assertSame([
-            [
-                'action' => 'answer',
-                'callControlId' => 'call-123-amd',
-                'commandId' => 'evt-123-amd-answer',
-            ],
             [
                 'action' => 'dial',
                 'callControlId' => 'call-123-amd',

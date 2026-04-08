@@ -271,7 +271,7 @@ final class CallControlWebhookHandler
         ]);
 
         try {
-            if ($shouldAnswerIncomingLeg) {
+            if ($shouldAnswerIncomingLeg && $this->forwardDestinationType !== 'sip') {
                 $this->callControlClient->answer($callControlId, $eventId . '-answer');
             }
 
