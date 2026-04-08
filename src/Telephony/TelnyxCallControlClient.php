@@ -144,27 +144,29 @@ final class TelnyxCallControlClient implements CallControlClientInterface
     ): void {
         $options ??= new CallControlDialOptions();
 
+        $this->createCall($this->buildDialPayload($callControlId, $destination, $from, $options));
+    }
+
+    private function buildDialPayload(
+        string $callControlId,
+        string $destination,
+        string $from,
+        CallControlDialOptions $options
+    ): array {
         $payload = [
             'to' => $destination,
             'from' => $from,
             'bridge_intent' => $options->bridgeIntent,
         ];
 
-        if ($options->connectionId !== null && $options->connectionId !== '') {
-            $payload['connection_id'] = $options->connectionId;
-        }
-
-        if ($options->linkTo !== null && $options->linkTo !== '') {
-            $payload['link_to'] = $options->linkTo;
-        }
+        $this->appendStringValue($payload, 'connection_id', $options->connectionId);
+        $this->appendStringValue($payload, 'link_to', $this->resolveLinkTo($callControlId, $options));
 
         if ($options->bridgeOnAnswer) {
             $payload['bridge_on_answer'] = true;
         }
 
-        if ($options->answeringMachineDetection !== null && $options->answeringMachineDetection !== '') {
-            $payload['answering_machine_detection'] = $options->answeringMachineDetection;
-        }
+        $this->appendStringValue($payload, 'answering_machine_detection', $options->answeringMachineDetection);
 
         if ($options->answeringMachineDetectionConfig !== null) {
             $amdConfig = $options->answeringMachineDetectionConfig->toArray();
@@ -174,19 +176,15 @@ final class TelnyxCallControlClient implements CallControlClientInterface
             }
         }
 
-        if ($options->clientState !== null && $options->clientState !== '') {
-            $payload['client_state'] = $options->clientState;
-        }
+        $this->appendStringValue($payload, 'client_state', $options->clientState);
 
         if ($options->timeoutSeconds !== null) {
             $payload['timeout_secs'] = $options->timeoutSeconds;
         }
 
-        if ($options->commandId !== null && $options->commandId !== '') {
-            $payload['command_id'] = $options->commandId;
-        }
+        $this->appendStringValue($payload, 'command_id', $options->commandId);
 
-        $this->sendCommand($callControlId, 'dial', $payload);
+        return $payload;
     }
 
     /**
@@ -204,6 +202,42 @@ final class TelnyxCallControlClient implements CallControlClientInterface
         }
 
         $this->sendWithStreams($url, $jsonPayload);
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function createCall(array $payload): void
+    {
+        $url = $this->baseUrl . '/calls';
+        $jsonPayload = (string) json_encode($payload, JSON_UNESCAPED_SLASHES);
+
+        if (function_exists('curl_init')) {
+            $this->sendWithCurl($url, $jsonPayload);
+
+            return;
+        }
+
+        $this->sendWithStreams($url, $jsonPayload);
+    }
+
+    private function resolveLinkTo(string $callControlId, CallControlDialOptions $options): ?string
+    {
+        if ($options->linkTo !== null && $options->linkTo !== '') {
+            return $options->linkTo;
+        }
+
+        return $callControlId !== '' ? $callControlId : null;
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function appendStringValue(array &$payload, string $key, ?string $value): void
+    {
+        if ($value !== null && $value !== '') {
+            $payload[$key] = $value;
+        }
     }
 
     private function sendWithCurl(string $url, string $jsonPayload): void
